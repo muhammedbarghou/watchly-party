@@ -6,33 +6,47 @@ alwaysApply: true
 
 # Watchly
 
-Real-time watch-party platform: users create a "Room," bring in a video (link or upload),
-and watch together in a 3D virtual cinema — seated avatars, voice + text chat.
+Real-time watch-party platform: users create a "Room," bring in a video (link only in v1),
+and watch together in sync — Twitch-style 2D layout (video player, chat sidebar, participant
+list), with text + voice chat.
 
 ## Stack
-- **Frontend:** Next.js (App Router) + TypeScript, Tailwind, shadcn/ui, Zustand for client state
-- **3D:** Three.js via react-three-fiber + drei (not raw three.js — see `three-scene.mdc`)
-- **Realtime:** PartyKit (Cloudflare Durable Objects) — one party per room; see `realtime.mdc`
-  for the message protocol. No separate Node WebSocket server and no Redis — the party
-  holds room state directly.
-- **Voice:** LiveKit (SFU, not mesh WebRTC — mesh doesn't scale past a handful of users)
-- **Auth:** Supabase Auth, including anonymous sessions for guest invitees
-- **Data:** Supabase Postgres via Prisma for durable data (see `data.mdc`)
-- **Video pipeline:** Cloudflare Stream (or Mux) for uploaded-file transcoding to HLS
+- **Frontend:** Next.js (App Router) + TypeScript, hosted on Vercel
+- **Realtime:** Node/Express + Socket.io — self-hosted, Dockerized, deployed to a VPS
+  (e.g. DigitalOcean/Hetzner). Deliberate choice for DevOps/Docker skill-building, not a
+  managed realtime service. Handles video-state sync, chat broadcast, and WebRTC signaling —
+  see `realtime.mdc` for the message protocol.
+- **Voice:** WebRTC peer-to-peer (`simple-peer` or native `RTCPeerConnection`) — mesh, no SFU.
+  Appropriate for v1's small-room scale (2–8 participants); SFU is a v3 concern if rooms grow.
+- **Auth:** Supabase Auth — standard email/password (OAuth providers can be added later)
+- **Data:** Supabase Postgres, accessed via the Supabase client directly (no ORM) — see
+  `data.mdc`
+- **Video playback:** `react-player` (or equivalent) — link-based sources only (YouTube,
+  Vimeo, direct URL). No file upload/transcoding pipeline in v1.
 
 ## Reference docs
-Full architecture, data-flow diagrams, and scaling notes live in `watchly-system-design.md`.
-The roadmap, full realtime protocol tables, and DB schema live in `watchly-technical-plan.md`.
-Treat those as the source of truth for anything not covered in these rule files —
-don't invent a different protocol shape or schema mid-implementation.
+Full requirements, acceptance criteria, and phased roadmap live in the project's PRD
+(`PRD-Watchly-2026-08-08.md`). Treat it as the source of truth for scope — if a request
+doesn't match what's in the PRD, flag the mismatch rather than inventing new scope.
+
+## Explicitly out of scope for v1 (deferred to v3)
+- File upload as a video source
+- Large rooms (10+ participants) / SFU media server (LiveKit, mediasoup, etc.)
+- Native iOS/Android apps
+- 3D room layouts / avatars
+- Persistent chat history (chat is ephemeral by design)
+
+## Known pitfall to avoid
+An earlier prototype accumulated redundant libraries: PouchDB + RxDB + Dexie for local
+storage, and Socket.io + react-use-websocket + raw `websocket` + simple-peer for real-time —
+all layered at once. This rebuild deliberately picks **one tool per concern**. Flag any
+suggestion that would reintroduce that kind of overlap.
 
 ## Ground rules
-- The party (PartyKit) is authoritative for room/playback state. The client never
-  assumes its local state is correct — it renders what the party and LiveKit report.
-- Host-only actions (playback control, kick, host transfer) must be re-validated
-  inside the party, against its own `hostId`. Hiding a button client-side is not
-  access control.
-- Prefer managed services over self-hosting infra at this stage (Supabase over
-  self-hosted Postgres, LiveKit Cloud over self-hosted SFU, PartyKit over a
-  hand-rolled Node WS server) — this is a small/solo team project, and this stack
-  was deliberately chosen to avoid running any custom backend process at all.
+- The Socket.io server is authoritative for room/playback state and membership. The client
+  never assumes its local state is correct — it renders what the server broadcasts.
+- Admin-only actions (playback control, kick, mute, ban, admin transfer) must be
+  re-validated server-side, against the server's own record of who the room's admin is.
+  Hiding a button client-side is not access control.
+- Self-hosting the backend (VPS + Docker) is intentional, not a placeholder for a managed
+  service — don't suggest swapping it for a managed realtime platform unless asked.

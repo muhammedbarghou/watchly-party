@@ -1,24 +1,29 @@
 "use client"
 
 import { useState, type ChangeEvent, type FormEvent } from "react"
-import Link from "next/link"
 import { Info, Mail, Send } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
   Field,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { getAuthCallbackUrl } from "@/lib/auth/urls"
+import { createClient } from "@/lib/supabase/client"
 
 type ForgotPasswordFormState = {
   email: string
 }
 
 export const ForgotPasswordForm = () => {
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [formState, setFormState] = useState<ForgotPasswordFormState>({
     email: "",
   })
@@ -27,8 +32,29 @@ export const ForgotPasswordForm = () => {
     setFormState((prev) => ({ ...prev, email: event.target.value }))
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    setErrorMessage(null)
+    setSuccessMessage(null)
+    setIsLoading(true)
+
+    const supabase = createClient()
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      formState.email,
+      {
+        redirectTo: getAuthCallbackUrl("/auth/update-password"),
+      }
+    )
+    setIsLoading(false)
+
+    if (error) {
+      setErrorMessage(error.message)
+      return
+    }
+
+    setSuccessMessage(
+      "If an account exists for that email, a reset link is on its way."
+    )
   }
 
   return (
@@ -60,18 +86,27 @@ export const ForgotPasswordForm = () => {
                   onChange={handleEmailChange}
                   required
                   aria-required="true"
+                  disabled={isLoading}
                   className="h-auto border-0 bg-transparent px-0 py-0 text-sm text-[#f3eadc] shadow-none placeholder:text-[#f3eadc]/20 focus-visible:border-transparent focus-visible:ring-0 md:text-sm dark:bg-transparent"
                 />
               </div>
             </Field>
           </FieldSet>
 
+          {errorMessage ? <FieldError>{errorMessage}</FieldError> : null}
+          {successMessage ? (
+            <p role="status" className="text-sm text-amber-flame">
+              {successMessage}
+            </p>
+          ) : null}
+
           <Button
             type="submit"
+            disabled={isLoading}
             className="group h-auto w-full gap-3 rounded-xl bg-amber-flame py-4 text-sm font-bold tracking-widest text-ink-black uppercase shadow-[0_12px_40px_-12px_rgba(255,186,8,0.4)] hover:bg-[#e5a500]"
             aria-label="Send reset link"
           >
-            Send Reset Link
+            {isLoading ? "Sending..." : "Send Reset Link"}
             <Send className="size-4 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
           </Button>
         </FieldGroup>

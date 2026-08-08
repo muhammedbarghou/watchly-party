@@ -3,12 +3,14 @@
 import { useState, type ChangeEvent, type FormEvent } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowRight, Eye, EyeOff } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Field,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldLegend,
@@ -16,6 +18,8 @@ import {
   FieldSet,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { getAuthCallbackUrl, getSafeNextPath } from "@/lib/auth/urls"
+import { createClient } from "@/lib/supabase/client"
 
 type SignInFormState = {
   email: string
@@ -24,7 +28,28 @@ type SignInFormState = {
 }
 
 export const SignInForm = () => {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(() => {
+    if (searchParams.get("error") === "auth") {
+      return "Authentication failed. Please try again."
+    }
+
+    if (searchParams.get("reset") === "success") {
+      return null
+    }
+
+    return null
+  })
+  const [successMessage, setSuccessMessage] = useState<string | null>(() => {
+    if (searchParams.get("reset") === "success") {
+      return "Password updated. Sign in with your new credentials."
+    }
+
+    return null
+  })
   const [formState, setFormState] = useState<SignInFormState>({
     email: "",
     password: "",
@@ -47,11 +72,48 @@ export const SignInForm = () => {
     setIsPasswordVisible((prev) => !prev)
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    setErrorMessage(null)
+    setSuccessMessage(null)
+    setIsLoading(true)
+
+    const supabase = createClient()
+    const { error } = await supabase.auth.signInWithPassword({
+      email: formState.email,
+      password: formState.password,
+    })
+    setIsLoading(false)
+
+    if (error) {
+      setErrorMessage(error.message)
+      return
+    }
+
+    const next = getSafeNextPath(searchParams.get("next"))
+    router.push(next)
+    router.refresh()
   }
 
-  const handleGoogleSignIn = () => {}
+  const handleGoogleSignIn = async () => {
+    setErrorMessage(null)
+    setSuccessMessage(null)
+    setIsLoading(true)
+
+    const next = getSafeNextPath(searchParams.get("next"))
+    const supabase = createClient()
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: getAuthCallbackUrl(next),
+      },
+    })
+
+    if (error) {
+      setIsLoading(false)
+      setErrorMessage(error.message)
+    }
+  }
 
   return (
     <div className="auth-glass-panel w-full max-w-md rounded-3xl border border-night-bordeaux/60 p-8 shadow-[0_40px_80px_-40px_rgba(0,0,0,1)] sm:p-9">
@@ -99,6 +161,7 @@ export const SignInForm = () => {
                 onChange={handleEmailChange}
                 required
                 aria-required="true"
+                disabled={isLoading}
                 className="field-glass h-auto rounded-xl border-transparent px-4 py-3.5 text-sm text-[#f3eadc] placeholder:text-[#f3eadc]/20 focus-visible:border-amber-flame focus-visible:ring-0 md:text-sm dark:bg-transparent"
               />
             </Field>
@@ -129,6 +192,7 @@ export const SignInForm = () => {
                   onChange={handlePasswordChange}
                   required
                   aria-required="true"
+                  disabled={isLoading}
                   className="h-auto border-0 bg-transparent px-0 py-0 text-sm text-[#f3eadc] shadow-none placeholder:text-[#f3eadc]/20 focus-visible:border-transparent focus-visible:ring-0 md:text-sm dark:bg-transparent"
                 />
                 <Button
@@ -154,6 +218,7 @@ export const SignInForm = () => {
               checked={formState.remember}
               onCheckedChange={handleRememberChange}
               aria-label="Stay signed in for 30 days"
+              disabled={isLoading}
               className="border-night-bordeaux/60 bg-night-bordeaux/30 data-checked:border-amber-flame data-checked:bg-amber-flame data-checked:text-ink-black"
             />
             <FieldLabel
@@ -164,12 +229,20 @@ export const SignInForm = () => {
             </FieldLabel>
           </Field>
 
+          {errorMessage ? <FieldError>{errorMessage}</FieldError> : null}
+          {successMessage ? (
+            <p role="status" className="text-sm text-amber-flame">
+              {successMessage}
+            </p>
+          ) : null}
+
           <Button
             type="submit"
+            disabled={isLoading}
             className="group h-auto w-full gap-2 rounded-xl bg-amber-flame py-4 text-sm font-semibold tracking-wide text-ink-black shadow-[0_12px_30px_-12px_rgba(255,186,8,0.6)] hover:bg-[#e5a500]"
             aria-label="Enter the Theater"
           >
-            Enter the Theater
+            {isLoading ? "Entering..." : "Enter the Theater"}
             <ArrowRight className="transition-transform group-hover:translate-x-0.5" />
           </Button>
 
@@ -182,6 +255,7 @@ export const SignInForm = () => {
               type="button"
               variant="outline"
               onClick={handleGoogleSignIn}
+              disabled={isLoading}
               aria-label="Sign in with Google"
               className="field-glass h-auto rounded-xl border-transparent py-3.5 text-sm text-[#f3eadc]/85 hover:border-[#f3eadc]/20 hover:bg-transparent hover:text-[#f3eadc]"
             >

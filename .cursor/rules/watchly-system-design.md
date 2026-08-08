@@ -6,10 +6,13 @@ Companion to `watchly-technical-plan.md` (roadmap / protocol tables / schema). T
 
 ## 1. Goals & Constraints
 
-- Real-time playback sync across all clients in a room (target drift tolerance: ~1.5s)
-- Voice + text chat that scales past a handful of users per room
-- Two independent video ingestion paths (external link vs. uploaded file) feeding the same playback pipeline
-- Solo/small-team operable: prefer managed services over self-hosted infra everywhere that's viable at MVP scale
+- Real-time playback sync across all clients in a room (target drift tolerance: ~1–1.5s)
+- Text + voice chat for small rooms (2–8 participants) in v1
+- Single video ingestion path for v1: external link only (no upload pipeline)
+- Backend is deliberately self-hosted (VPS + Docker) rather than a managed realtime
+  platform — this is a solo-dev project used partly for DevOps/Docker practice, so
+  "operable without a team" means "operable by one person who owns the ops," not
+  "avoid ops entirely"
 
 ---
 
@@ -17,45 +20,39 @@ Companion to `watchly-technical-plan.md` (roadmap / protocol tables / schema). T
 
 ```mermaid
 flowchart LR
-  subgraph Client["Web Client (Next.js + react-three-fiber)"]
-    UI[2D UI / HUD]
-    Scene[3D Theater Scene]
-    PSClient[PartySocket Client]
-    RTC[LiveKit Client]
+  subgraph Client["Web Client (Next.js)"]
+    UI[2D UI — video player, chat sidebar, participant list]
+    SIOClient[Socket.io Client]
+    RTC[WebRTC Peer Connections]
   end
 
-  subgraph Realtime["PartyKit (Cloudflare Durable Objects)"]
-    Party[Room Party — holds its own state]
-  end
-
-  subgraph Voice["Voice Infra"]
-    SFU[LiveKit SFU]
+  subgraph Backend["Node/Express + Socket.io (Docker, VPS)"]
+    Server[Socket.io Server — holds live room state in memory]
   end
 
   subgraph Data["Durable Data Layer (Supabase)"]
-    PG[(Supabase Postgres: users, rooms, uploads)]
-  end
-
-  subgraph Media["Upload Pipeline"]
-    Storage[(Object Storage)]
-    Transcode[Cloudflare Stream / Mux]
+    PG[(Supabase Postgres: users, friendships, rooms)]
   end
 
   Auth[Supabase Auth]
+  STUN[STUN/TURN servers]
 
-  UI --> PSClient
-  Scene --> PSClient
-  PSClient <--> Party
-  Party --> PG
-  RTC <--> SFU
+  UI --> SIOClient
+  SIOClient <--> Server
+  Server --> PG
+  RTC <--> RTC
+  RTC -.signaling via.-> SIOClient
+  RTC -.NAT traversal.-> STUN
   UI --> Auth
   Auth --> PG
-  UI -- upload --> Storage
-  Storage --> Transcode
-  Transcode --> Scene
 ```
 
-**No more Redis:** each room is one PartyKit party — a Cloudflare Durable Object that already holds its own state in memory (with optional hibernation when idle) between messages. That's exactly the job Redis was doing before, so it comes out of the stack rather than getting swapped for something else. Supabase Postgres holds anything that needs to survive a restart — accounts, room configs, upload records.
+**No managed realtime platform:** the Node/Express + Socket.io process is a single backend
+service the developer owns end-to-end — deployed as a Docker container on a VPS
+(DigitalOcean/Hetzner or similar). It holds all live room state (participants, playback
+position, admin/role assignments, playback-control grants) in memory for the lifetime of
+the process. Supabase Postgres holds only what needs to survive a restart: accounts, room
+configs, friendships.
 
 ---
 
@@ -63,12 +60,12 @@ flowchart LR
 
 | Component | Responsibility |
 |---|---|
-| **Web Client** | Renders the 3D theater, HUD, chat; holds no authoritative state — it's a view over what the party and LiveKit report |
-| **PartyKit (party per room)** | Single source of truth for room membership, seat assignments, and playback state; validates host-only actions server-side (never trust the client's claim of being host); holds this state directly, no separate cache layer needed |
-| **Supabase Postgres** | Durable records: users, room configs, upload metadata, optionally chat history |
-| **LiveKit (SFU)** | Voice audio routing; decoupled from the realtime party on purpose — voice traffic is a different scaling problem than chat/state sync |
-| **Upload Pipeline** | Accepts uploaded files, transcodes to adaptive HLS, hands back a playable URL |
-| **Supabase Auth** | Identity; also issues anonymous sessions for casual invitees who don't want to make an account |
+| **Web Client** | Renders the 2D Twitch-style layout (video player, chat sidebar, participant list, voice indicators); holds no authoritative state — it's a view over what the Socket.io server and WebRTC peers report |
+| **Socket.io Server** | Single source of truth for room membership, roles (admin/moderator/viewer), playback state, and playback-control grants; validates admin-only actions server-side (never trusts the client's claim of being admin); also relays WebRTC signaling (offer/answer/ICE candidates) between peers in a room |
+| **Supabase Postgres** | Durable records: users, friendships, room configs (uid, name, video URL, password hash, visibility, status) |
+| **Supabase Auth** | Identity — email/password sign-up/login for v1; OAuth providers deferred |
+| **WebRTC (peer-to-peer)** | Voice audio between participants directly; no media server in v1, appropriate for small rooms (2–8 people) |
+| **STUN/TURN** | NAT traversal for WebRTC connections; STUN alone covers most cases, TURN is a fallback for restrictive networks/firewalls |
 
 ---
 
@@ -79,84 +76,113 @@ flowchart LR
 sequenceDiagram
   participant U as User Browser
   participant A as Supabase Auth
-  participant P as Room Party (PartyKit)
+  participant S as Socket.io Server
   participant D as Supabase Postgres
 
-  U->>A: Sign in / start anonymous session
+  U->>A: Sign in
   A-->>U: Session token
-  U->>P: JOIN_ROOM (roomId, avatarConfig)
-  P->>D: Verify room exists + visibility rules
-  P->>P: add user to its own connection list, assign seat
-  P-->>U: ROOM_STATE (full snapshot)
-  P-->>U: broadcast USER_JOINED to everyone else in the room
+  U->>S: join_room (roomUid, password?)
+  S->>D: verify room exists, check password hash + visibility rules
+  S->>S: check ban list for this room
+  S->>S: add user to in-memory room state
+  S-->>U: room_state (full snapshot — participants, roles, playback state)
+  S-->>U: broadcast user_joined to everyone else in the room
 ```
 
 ### Playback sync
 ```mermaid
 sequenceDiagram
-  participant H as Host Client
-  participant P as Room Party (PartyKit)
+  participant A as Admin Client
+  participant S as Socket.io Server
   participant C as Other Clients
 
-  H->>P: PLAYBACK_CONTROL (play, positionMs)
-  P->>P: update its own in-memory state
-  P-->>H: PLAYBACK_SYNC (confirmation)
-  P-->>C: PLAYBACK_SYNC (broadcast)
-  loop every ~5s
-    P-->>C: PLAYBACK_SYNC (heartbeat)
-    C->>C: compare local position to expected, hard-seek if drift > 1.5s
+  A->>S: playback_control (action: play/pause/seek, positionMs)
+  S->>S: verify sender is admin or has playback_control grant
+  S->>S: update in-memory playback state (server-side timestamp)
+  S-->>A: playback_sync (confirmation)
+  S-->>C: playback_sync (broadcast)
+  loop every few seconds
+    S-->>C: playback_sync (heartbeat)
+    C->>C: compare local position to expected, hard-seek if drift exceeds threshold
   end
 ```
 
-### Upload & transcode
+### Voice chat setup (WebRTC signaling)
 ```mermaid
 sequenceDiagram
-  participant U as User Browser
-  participant St as Object Storage
-  participant Tc as Transcoder
-  participant D as Supabase Postgres
-  participant P as Room Party (PartyKit)
+  participant U1 as User A
+  participant S as Socket.io Server
+  participant U2 as User B
 
-  U->>St: upload file (signed URL)
-  St-->>D: write uploads row (status: processing)
-  St->>Tc: trigger transcode
-  Tc-->>D: update uploads row (status: ready, hls_url)
-  Tc-->>P: notify room that video is ready
-  P-->>U: PLAYBACK_SYNC (videoSource updated)
+  U1->>S: rtc_offer (targetUserId: B)
+  S-->>U2: rtc_offer (from: A)
+  U2->>S: rtc_answer (targetUserId: A)
+  S-->>U1: rtc_answer (from: B)
+  U1->>S: rtc_ice_candidate
+  S-->>U2: rtc_ice_candidate
+  U2->>S: rtc_ice_candidate
+  S-->>U1: rtc_ice_candidate
+  Note over U1,U2: Direct peer-to-peer audio connection established
 ```
 
 ---
 
 ## 5. Scaling
 
-- **Realtime layer:** each room is its own PartyKit party (Durable Object), so rooms scale horizontally by definition — there's no shared server instance to overload, and no pub/sub layer needed to coordinate state across instances, since a given room's state only ever lives in that one party
-- **Voice:** mesh WebRTC only works for very small rooms; LiveKit's SFU model is what actually lets a room grow past ~6–8 people without every client's upload bandwidth becoming the ceiling
-- **Video delivery:** HLS + CDN means the transcoding step happens once per upload, not once per viewer
-- **3D scene:** performance budget belongs to the client, not the server — keep avatar/room polycounts and texture sizes in check so rooms stay smooth on mid-range hardware, since there's no server-side fix for a client-side frame-rate problem
+- **Realtime layer:** v1 runs a single Socket.io server process — fine for the target
+  scale (small rooms, modest concurrent room count). If room/user volume grows well
+  beyond v1 expectations, options include running multiple Socket.io instances behind a
+  sticky-session load balancer with a shared adapter (e.g. Redis pub/sub) — not needed at
+  launch, noted here only so it's not a surprise later.
+- **Voice:** mesh WebRTC only works for small rooms — each participant connects directly
+  to every other participant, so bandwidth/CPU cost per client grows with room size.
+  This is why v1 caps rooms small (2–8) and defers an SFU (LiveKit/mediasoup) to v3 for
+  larger rooms.
+- **Database:** Supabase Postgres only holds durable, low-frequency-write data (accounts,
+  room configs, friendships) — it's not in the hot path for playback sync or chat, so it
+  isn't a scaling bottleneck for v1's real-time features.
 
 ## 6. Failure Modes & Resilience
 
-- **Host disconnects:** the party's own `onClose` handler fires when the host's connection drops, picks (or lets the room vote for) a new host, broadcasts `HOST_CHANGED` — playback state itself doesn't need to change, only who's allowed to control it
-- **Client reconnects mid-session:** on reconnect, client re-sends `JOIN_ROOM` and gets a fresh `ROOM_STATE` snapshot rather than trying to resume some partial state — simpler and harder to get wrong than incremental resync
-- **Transcode failure:** `uploads.status = 'failed'` surfaces directly in the room UI rather than leaving viewers staring at a stuck loading spinner
-- **Party goes idle/hibernates:** PartyKit can hibernate a party between messages to save cost; on the next message it wakes and its state is intact, so this isn't a failure mode to design around — just worth knowing it happens
+- **Admin disconnects without transferring the role:** the server's own disconnect
+  handler fires, auto-promotes a fallback admin (e.g. the longest-present participant) or
+  closes the room after a timeout — playback state itself doesn't need to change, only
+  who's allowed to control it.
+- **Client reconnects mid-session:** on reconnect, the client re-joins and receives a
+  fresh `room_state` snapshot rather than trying to resume partial state — simpler and
+  harder to get wrong than incremental resync.
+- **Socket.io server restarts:** all in-memory room state (participants, playback
+  position, roles) is lost. Acceptable trade-off for v1 given chat is ephemeral anyway;
+  documented here as a known limitation rather than something to design around
+  immediately — revisit if uptime issues arise in practice.
+- **WebRTC connection fails behind a restrictive NAT/firewall:** falls back to TURN;
+  if TURN also fails, that participant simply has no voice (text chat still works) rather
+  than blocking them from the room.
 
 ## 7. Security & Moderation
 
-- All host-only actions (`PLAYBACK_CONTROL`, `KICK_USER`, `HOST_TRANSFER`) are re-checked server-side against the party's own `hostId` — the client UI hiding a button is not access control
-- Uploaded content raises DMCA/takedown exposure — recommend gating uploads to private rooms only at MVP, plus a simple takedown request flow before opening uploads to public rooms
-- Room passwords hashed, never compared in plaintext; rate-limit join attempts on password-protected rooms
+- All admin-only actions (`playback_control`, `kick_user`, `mute_user`, `ban_user`,
+  `transfer_admin`) are re-checked server-side against the Socket.io server's own record
+  of the room's admin — the client UI hiding a button is not access control.
+- Bans are enforced server-side on both the join-by-UID and join-by-invite paths; a
+  banned user's ID is checked before a socket connection to that room is accepted.
+- Room passwords are hashed before storage and validated server-side on join — never
+  compared in plaintext, never validated client-side.
+- Rate limiting applies to room creation and join attempts, to prevent UID brute-forcing
+  on private rooms.
+- Row Level Security (RLS) on Supabase Postgres ensures users can only read/write
+  friendship and room rows they're authorized to touch.
 
 ## 8. Deployment Topology
 
 | Piece | Where |
 |---|---|
 | Next.js web client | Vercel |
-| Realtime (rooms/sync/chat) | PartyKit, deployed to Cloudflare (Durable Objects) |
+| Realtime (rooms/sync/chat/signaling) | Node/Express + Socket.io, Dockerized, on a VPS (DigitalOcean/Hetzner or similar) |
 | Postgres | Supabase |
 | Auth | Supabase Auth |
-| Voice SFU | LiveKit Cloud (or self-hosted later if cost/scale demands it) |
-| Video storage + transcode | Cloudflare R2 + Cloudflare Stream (or Mux) |
-| DNS/CDN | Cloudflare |
+| Voice | WebRTC peer-to-peer (STUN, with TURN fallback) |
 
-Notably absent: Railway/Fly.io and Redis — both were only there to host and back a custom Node WebSocket server, which PartyKit replaces outright.
+Notably absent: any managed realtime platform (PartyKit, etc.), any SFU media server
+(LiveKit, mediasoup), and any video transcoding pipeline (Cloudflare Stream, Mux) — all
+deferred to v3 alongside file uploads and large-room support.

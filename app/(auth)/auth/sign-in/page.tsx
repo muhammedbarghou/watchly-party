@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import Image from "next/image"
 
 import { SignInForm } from "@/components/auth/sign-in-form"
@@ -55,7 +56,9 @@ const SignInPage = () => {
       </div>
 
       <div className="relative flex w-full items-center justify-center p-6 sm:p-10 lg:w-[42%] xl:w-[40%]">
-        <SignInForm />
+        <Suspense fallback={<div className="text-sm text-[#f3eadc]/50">Loading...</div>}>
+          <SignInForm />
+        </Suspense>
       </div>
     </div>
   )

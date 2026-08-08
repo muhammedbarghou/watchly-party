@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, type ChangeEvent, type FormEvent } from "react"
+import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Info, Lock } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -13,6 +14,7 @@ import {
   FieldSet,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { createClient } from "@/lib/supabase/client"
 
 type UpdatePasswordFormState = {
   password: string
@@ -20,10 +22,13 @@ type UpdatePasswordFormState = {
 }
 
 export const UpdatePasswordForm = () => {
+  const router = useRouter()
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] =
     useState(false)
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [formState, setFormState] = useState<UpdatePasswordFormState>({
     password: "",
     confirmPassword: "",
@@ -60,9 +65,10 @@ export const UpdatePasswordForm = () => {
     setIsConfirmPasswordVisible((prev) => !prev)
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setHasAttemptedSubmit(true)
+    setErrorMessage(null)
 
     if (
       formState.password.length < 8 ||
@@ -70,6 +76,23 @@ export const UpdatePasswordForm = () => {
     ) {
       return
     }
+
+    setIsLoading(true)
+    const supabase = createClient()
+    const { error } = await supabase.auth.updateUser({
+      password: formState.password,
+    })
+
+    if (error) {
+      setIsLoading(false)
+      setErrorMessage(error.message)
+      return
+    }
+
+    await supabase.auth.signOut()
+    setIsLoading(false)
+    router.push("/auth/sign-in?reset=success")
+    router.refresh()
   }
 
   return (
@@ -105,7 +128,10 @@ export const UpdatePasswordForm = () => {
                   onChange={handlePasswordChange}
                   required
                   aria-required="true"
-                  aria-invalid={showPasswordLengthError || showEmptyPasswordError}
+                  disabled={isLoading}
+                  aria-invalid={
+                    showPasswordLengthError || showEmptyPasswordError
+                  }
                   aria-describedby={
                     showPasswordLengthError || showEmptyPasswordError
                       ? "update-password-error"
@@ -172,6 +198,7 @@ export const UpdatePasswordForm = () => {
                   onChange={handleConfirmPasswordChange}
                   required
                   aria-required="true"
+                  disabled={isLoading}
                   aria-invalid={showMismatchError || showEmptyConfirmError}
                   aria-describedby={
                     showMismatchError || showEmptyConfirmError
@@ -208,12 +235,15 @@ export const UpdatePasswordForm = () => {
             </Field>
           </FieldSet>
 
+          {errorMessage ? <FieldError>{errorMessage}</FieldError> : null}
+
           <Button
             type="submit"
+            disabled={isLoading}
             className="group h-auto w-full gap-3 rounded-xl bg-amber-flame py-4 text-sm font-bold tracking-widest text-ink-black uppercase shadow-[0_12px_40px_-12px_rgba(255,186,8,0.4)] hover:bg-[#e5a500]"
             aria-label="Update password"
           >
-            Update Password
+            {isLoading ? "Updating..." : "Update Password"}
             <Lock className="size-4 transition-transform group-hover:scale-110" />
           </Button>
         </FieldGroup>

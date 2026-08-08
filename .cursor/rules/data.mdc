@@ -1,37 +1,36 @@
 ---
-description: Supabase Postgres/Prisma schema conventions
-globs: prisma/**/*,**/*.prisma,lib/db/**/*,lib/supabase/**/*
+description: Supabase Postgres schema conventions
+globs: lib/db/**/*,lib/supabase/**/*
 alwaysApply: false
 ---
 
 # Data Layer Conventions
 
-Schema definitions live in `watchly-technical-plan.md` §4 — this file is about how to
-work with them, not a second copy of the DDL.
+Schema definitions live in the PRD (`PRD-Watchly-2026-08-08.md`, §5) — this file is about
+how to work with them, not a second copy of the DDL.
 
-- Core Prisma models: `User`, `Room`, `RoomParticipant`, `ChatMessage` (optional
-  persistence — fine to skip writing these at MVP and rely on the realtime broadcast
-  only), `Upload`. Don't add new top-level models for things that are really just
-  fields on `Room` (e.g. video source config is a JSON field on `Room`, not its own table).
-- `User.authUserId` references Supabase's `auth.users(id)` — every user (including
-  anonymous/guest sign-ins) gets a real `auth.users` row from Supabase Auth, and a
-  corresponding row in our own `users` table for app-specific fields (display name,
-  avatar config). Don't treat guests as sessionless; they still need a stable id for
-  seat assignment, chat attribution, and reconnect.
-- `Room.videoSource` is a JSON blob: `{ type: 'link' | 'upload', url, uploadId }` — keep
-  it a tagged union in the Prisma/TS types, don't split into nullable `linkUrl` /
-  `uploadId` columns.
-- IDs are UUIDs generated at the DB level (`gen_random_uuid()` / `@default(uuid())`),
-  not app-generated — keeps insertion logic simple and avoids collision handling.
-- `RoomParticipant` is an append-only join log (`joined_at`/`left_at`), not a
-  single-row "current membership" table — current membership lives on the room's
-  PartyKit party instance (see `realtime.mdc`), Postgres just needs the history.
-- There is no Redis in this stack. Ephemeral, fast-changing room state
-  (playback position, presence, seat map) lives on the PartyKit party, not here —
-  if a value changes more than once every few seconds, it doesn't belong in Postgres.
-- If using Supabase's client directly (instead of/alongside Prisma) for simpler reads,
-  Row Level Security policies still need to enforce the same rules the server would —
-  don't rely on the client only requesting what it's "supposed to."
-- Migrations: every schema change goes through a Prisma migration file (or Supabase
-  migration, if using the Supabase CLI), never a manual change against the dev or
+- Core tables: `users`, `friendships`, `rooms`, `room_participants`. Don't add new
+  top-level tables for things that are really just fields on `rooms` (e.g. private-room
+  password is a nullable `password_hash` column on `rooms`, not its own table).
+- `users.id` matches Supabase Auth's `auth.users(id)` directly — no separate app-side
+  user ID to keep in sync.
+- Only durable data lives in Postgres: accounts, room configs, friendships. Fast-changing
+  data does not — no `chat_messages` table (chat is ephemeral, broadcast-only via
+  Socket.io) and no live playback position/participant-presence table. If a value changes
+  more than once every few seconds, it belongs in the Socket.io server's memory, not here
+  (see `realtime.mdc`).
+- `room_participants` reflects current room membership as tracked by the Socket.io server;
+  if it's persisted to Postgres at all, treat it as a snapshot for reference, not the
+  live source of truth — the server's in-memory state wins.
+- IDs are UUIDs generated at the DB level (`gen_random_uuid()`), not app-generated — keeps
+  insertion logic simple and avoids collision handling. Room `uid` (the public join code)
+  is a separate, shorter, unique string, generated server-side and checked against active
+  rooms before assignment.
+- Room passwords: store only `password_hash` (hashed server-side before insert), never
+  plaintext. Validate on join server-side — never trust a client-side password check.
+- Row Level Security (RLS): enable policies so users can only read/write friendship and
+  room rows they're authorized to touch (e.g. a user can only see `friendships` rows
+  where they're the requester or recipient; only a room's creator/admin can update it).
+- Use the Supabase client directly for reads/writes — no ORM (Prisma, etc.) layered on
+  top. Migrations go through the Supabase CLI, never a manual change against the dev or
   prod database.

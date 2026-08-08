@@ -3,6 +3,7 @@
 import { useState, type ChangeEvent, type FormEvent } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { ArrowRight, Eye, EyeOff } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -17,6 +18,8 @@ import {
   FieldSet,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { getAuthCallbackUrl } from "@/lib/auth/urls"
+import { createClient } from "@/lib/supabase/client"
 
 type SignUpFormState = {
   fullName: string
@@ -26,8 +29,12 @@ type SignUpFormState = {
 }
 
 export const SignUpForm = () => {
+  const router = useRouter()
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [formState, setFormState] = useState<SignUpFormState>({
     fullName: "",
     email: "",
@@ -57,20 +64,67 @@ export const SignUpForm = () => {
     setIsPasswordVisible((prev) => !prev)
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setHasAttemptedSubmit(true)
+    setErrorMessage(null)
+    setSuccessMessage(null)
 
     if (!formState.acceptTerms) {
       return
     }
+
+    setIsLoading(true)
+    const supabase = createClient()
+    const { data, error } = await supabase.auth.signUp({
+      email: formState.email,
+      password: formState.password,
+      options: {
+        data: {
+          full_name: formState.fullName,
+        },
+        emailRedirectTo: getAuthCallbackUrl("/home-page"),
+      },
+    })
+    setIsLoading(false)
+
+    if (error) {
+      setErrorMessage(error.message)
+      return
+    }
+
+    if (data.session) {
+      router.push("/home-page")
+      router.refresh()
+      return
+    }
+
+    setSuccessMessage(
+      "Check your email for a confirmation link to finish joining the premiere."
+    )
   }
 
-  const handleGoogleSignUp = () => {
+  const handleGoogleSignUp = async () => {
     setHasAttemptedSubmit(true)
+    setErrorMessage(null)
+    setSuccessMessage(null)
 
     if (!formState.acceptTerms) {
       return
+    }
+
+    setIsLoading(true)
+    const supabase = createClient()
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: getAuthCallbackUrl("/home-page"),
+      },
+    })
+
+    if (error) {
+      setIsLoading(false)
+      setErrorMessage(error.message)
     }
   }
 
@@ -122,6 +176,7 @@ export const SignUpForm = () => {
                 onChange={handleFullNameChange}
                 required
                 aria-required="true"
+                disabled={isLoading}
                 className="field-glass h-auto rounded-xl border-transparent px-4 py-3.5 text-sm text-[#f3eadc] placeholder:text-[#f3eadc]/30 focus-visible:border-amber-flame focus-visible:ring-0 md:text-sm dark:bg-transparent"
               />
             </Field>
@@ -143,6 +198,7 @@ export const SignUpForm = () => {
                 onChange={handleEmailChange}
                 required
                 aria-required="true"
+                disabled={isLoading}
                 className="field-glass h-auto rounded-xl border-transparent px-4 py-3.5 text-sm text-[#f3eadc] placeholder:text-[#f3eadc]/30 focus-visible:border-amber-flame focus-visible:ring-0 md:text-sm dark:bg-transparent"
               />
             </Field>
@@ -165,6 +221,7 @@ export const SignUpForm = () => {
                   onChange={handlePasswordChange}
                   required
                   aria-required="true"
+                  disabled={isLoading}
                   className="h-auto border-0 bg-transparent px-0 py-0 text-sm text-[#f3eadc] shadow-none placeholder:text-[#f3eadc]/30 focus-visible:border-transparent focus-visible:ring-0 md:text-sm dark:bg-transparent"
                 />
                 <Button
@@ -198,6 +255,7 @@ export const SignUpForm = () => {
               aria-describedby={
                 showTermsError ? "sign-up-accept-terms-error" : undefined
               }
+              disabled={isLoading}
               className="mt-0.5 border-night-bordeaux/60 bg-night-bordeaux/30 data-checked:border-amber-flame data-checked:bg-amber-flame data-checked:text-ink-black"
             />
             <FieldLabel
@@ -228,12 +286,23 @@ export const SignUpForm = () => {
             </FieldError>
           ) : null}
 
+          {errorMessage ? <FieldError>{errorMessage}</FieldError> : null}
+          {successMessage ? (
+            <p
+              role="status"
+              className="text-sm text-amber-flame"
+            >
+              {successMessage}
+            </p>
+          ) : null}
+
           <Button
             type="submit"
+            disabled={isLoading}
             className="group mt-3 h-auto w-full gap-2 rounded-xl bg-amber-flame py-4 text-sm font-semibold tracking-wide text-ink-black shadow-[0_12px_30px_-12px_rgba(255,186,8,0.6)] hover:bg-[#e5a500]"
             aria-label="Join the Premiere"
           >
-            Join the Premiere
+            {isLoading ? "Joining..." : "Join the Premiere"}
             <ArrowRight className="transition-transform group-hover:translate-x-0.5" />
           </Button>
 
@@ -246,6 +315,7 @@ export const SignUpForm = () => {
               type="button"
               variant="outline"
               onClick={handleGoogleSignUp}
+              disabled={isLoading}
               aria-label="Register with Google"
               className="field-glass h-auto rounded-xl border-transparent py-3.5 text-sm text-[#f3eadc]/85 hover:border-[#f3eadc]/20 hover:bg-transparent hover:text-[#f3eadc]"
             >
