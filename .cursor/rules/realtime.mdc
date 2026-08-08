@@ -1,0 +1,35 @@
+---
+description: Realtime (PartyKit) protocol conventions
+globs: party/**/*,**/*.party.ts,**/*.server.ts
+alwaysApply: false
+---
+
+# Realtime Conventions (PartyKit)
+
+Full protocol tables live in `watchly-technical-plan.md` — this file is the "don't break
+these invariants" summary, not a replacement for it.
+
+- One PartyKit party per room, addressed by `roomId`. Every message follows the
+  envelope: `{ type, roomId, senderId, timestamp, payload }`. Don't introduce ad-hoc
+  message shapes outside this envelope.
+- The **party is authoritative** for playback state and room membership — it's not a
+  thin relay in front of some other source of truth. Client-sent `PLAYBACK_CONTROL`
+  events are requests, not commands — validate the sender is the current host
+  (checked against the party's own in-memory `hostId`) before applying and broadcasting.
+- Playback sync: the party broadcasts `PLAYBACK_SYNC` on every control event *and* on a
+  ~5s heartbeat. Clients reconcile drift against the heartbeat; small drift is left
+  alone, only hard-seek past the ~1.5s threshold — don't correct on every heartbeat
+  tick regardless of drift, it makes playback visibly stutter.
+- Room state (playback position, presence, seat map) lives directly on the party
+  instance — there is no Redis layer and no separate cache to keep in sync. Durable
+  state (accounts, room configs, upload records) goes through Supabase
+  Postgres/Prisma — never the reverse, and never write playback position there.
+- Use the party's own `onConnect`/`onClose` lifecycle for presence and disconnect
+  detection — don't build a separate TTL/heartbeat-key mechanism, PartyKit already
+  tells you when a connection drops.
+- Reconnect flow: client re-sends `JOIN_ROOM` and receives a fresh `ROOM_STATE`
+  snapshot — don't build incremental resync logic, it's a lot of complexity for a
+  problem full-snapshot-on-reconnect already solves.
+- Because each room is its own party, there's no cross-instance fan-out to design for
+  — don't add a pub/sub layer "just in case," a single room's state only ever needs to
+  exist in that one party.

@@ -1,0 +1,38 @@
+---
+description: Watchly project context — what this app is and the chosen stack
+globs:
+alwaysApply: true
+---
+
+# Watchly
+
+Real-time watch-party platform: users create a "Room," bring in a video (link or upload),
+and watch together in a 3D virtual cinema — seated avatars, voice + text chat.
+
+## Stack
+- **Frontend:** Next.js (App Router) + TypeScript, Tailwind, shadcn/ui, Zustand for client state
+- **3D:** Three.js via react-three-fiber + drei (not raw three.js — see `three-scene.mdc`)
+- **Realtime:** PartyKit (Cloudflare Durable Objects) — one party per room; see `realtime.mdc`
+  for the message protocol. No separate Node WebSocket server and no Redis — the party
+  holds room state directly.
+- **Voice:** LiveKit (SFU, not mesh WebRTC — mesh doesn't scale past a handful of users)
+- **Auth:** Supabase Auth, including anonymous sessions for guest invitees
+- **Data:** Supabase Postgres via Prisma for durable data (see `data.mdc`)
+- **Video pipeline:** Cloudflare Stream (or Mux) for uploaded-file transcoding to HLS
+
+## Reference docs
+Full architecture, data-flow diagrams, and scaling notes live in `watchly-system-design.md`.
+The roadmap, full realtime protocol tables, and DB schema live in `watchly-technical-plan.md`.
+Treat those as the source of truth for anything not covered in these rule files —
+don't invent a different protocol shape or schema mid-implementation.
+
+## Ground rules
+- The party (PartyKit) is authoritative for room/playback state. The client never
+  assumes its local state is correct — it renders what the party and LiveKit report.
+- Host-only actions (playback control, kick, host transfer) must be re-validated
+  inside the party, against its own `hostId`. Hiding a button client-side is not
+  access control.
+- Prefer managed services over self-hosting infra at this stage (Supabase over
+  self-hosted Postgres, LiveKit Cloud over self-hosted SFU, PartyKit over a
+  hand-rolled Node WS server) — this is a small/solo team project, and this stack
+  was deliberately chosen to avoid running any custom backend process at all.
