@@ -279,6 +279,20 @@
     animation: ember-flicker 3s ease-in-out infinite;
   }
 
+  @keyframes cinema-glow {
+    0%,
+    100% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+
+  .cinema-glow {
+    animation: cinema-glow 4s ease-in-out infinite;
+  }
+
   .hero-gradient {
     background:
       radial-gradient(circle at 30% 20%, rgba(106, 4, 15, 0.35), transparent 55%),
