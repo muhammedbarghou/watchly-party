@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { createClient } from "@/lib/supabase/client"
+import Image from "next/image"
 
 type AppNavProps = {
   displayName: string
@@ -31,7 +32,7 @@ type AccountMenuLink = {
 }
 
 const accountMenuLinks: AccountMenuLink[] = [
-  { label: "Profile", href: "/profile", icon: UserIcon },
+  { label: "Friends", href: "/friends", icon: UserIcon },
   { label: "Settings", href: "/settings", icon: SettingsIcon },
 ]
 
@@ -60,7 +61,7 @@ export const AppNav = ({ displayName, avatarUrl }: AppNavProps) => {
           className="font-serif text-lg tracking-wide text-[#f3eadc] transition-colors hover:text-amber-flame focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-flame/60"
           aria-label="Watchly home"
         >
-          Watchly
+          <Image src="/Logo/Logo.png" alt="Watchly" width={100} height={100} />
         </Link>
 
         <div className="flex items-center gap-1 sm:gap-2">

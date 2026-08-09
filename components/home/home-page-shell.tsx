@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { DoorOpenIcon, PlusIcon, UsersIcon } from "lucide-react"
 
+import { useFriends } from "@/components/friends/friends-provider"
 import { CreateRoomDialog } from "@/components/home/create-room-dialog"
 import { JoinRoomDialog } from "@/components/home/join-room-dialog"
 import { RoomCard, RoomCardSkeleton } from "@/components/home/room-card"
@@ -17,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { FRIENDS_LIVE_ROOMS, RECENT_ROOMS } from "@/lib/home/fixtures"
+import { RECENT_ROOMS } from "@/lib/home/fixtures"
 import type { RoomCardData } from "@/lib/home/types"
 
 type HomePageShellProps = {
@@ -28,8 +29,8 @@ const LOAD_DELAY_MS = 650
 
 export const HomePageShell = ({ displayName }: HomePageShellProps) => {
   const { notify } = useNotifications()
+  const { friendsLiveRooms, isLoading: isFriendsLoading } = useFriends()
   const [isLoading, setIsLoading] = useState(true)
-  const [friendsLiveRooms] = useState<RoomCardData[]>(FRIENDS_LIVE_ROOMS)
   const [recentRooms, setRecentRooms] = useState<RoomCardData[]>(RECENT_ROOMS)
   const [requestedRoomIds, setRequestedRoomIds] = useState<Set<string>>(
     () => new Set()
@@ -111,7 +112,7 @@ export const HomePageShell = ({ displayName }: HomePageShellProps) => {
           >
             Friends watching now
           </h2>
-          {!isLoading ? (
+          {!isLoading && !isFriendsLoading ? (
             <Badge
               variant="outline"
               className="border-amber-flame/40 text-amber-flame"
@@ -125,7 +126,7 @@ export const HomePageShell = ({ displayName }: HomePageShellProps) => {
           ) : null}
         </div>
 
-        {isLoading ? (
+        {isLoading || isFriendsLoading ? (
           <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-4">
             <RoomCardSkeleton />
             <RoomCardSkeleton />

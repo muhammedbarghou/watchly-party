@@ -22,6 +22,8 @@ type NotificationContextValue = {
   notify: (message: string) => void
   markAllRead: () => void
   dismissToast: (id: string) => void
+  upsertFriendRequestInbox: (username: string) => void
+  removeInboxByFriendUsername: (username: string) => void
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(
@@ -29,6 +31,9 @@ const NotificationContext = createContext<NotificationContextValue | null>(
 )
 
 const TOAST_TTL_MS = 4000
+
+const friendRequestBody = (username: string) =>
+  `${username} wants to be friends`
 
 type NotificationProviderProps = {
   children: ReactNode
@@ -70,6 +75,40 @@ export const NotificationProvider = ({
     setInbox((prev) => prev.map((item) => ({ ...item, read: true })))
   }, [])
 
+  const upsertFriendRequestInbox = useCallback((username: string) => {
+    const body = friendRequestBody(username)
+    setInbox((prev) => {
+      const existing = prev.find(
+        (item) => item.type === "friend_request" && item.body === body
+      )
+      if (existing) {
+        return prev.map((item) =>
+          item.id === existing.id ? { ...item, read: false } : item
+        )
+      }
+      return [
+        {
+          id: `notif-fr-${username}-${Date.now()}`,
+          type: "friend_request" as const,
+          title: "Friend request",
+          body,
+          createdAt: new Date().toISOString(),
+          read: false,
+        },
+        ...prev,
+      ]
+    })
+  }, [])
+
+  const removeInboxByFriendUsername = useCallback((username: string) => {
+    const body = friendRequestBody(username)
+    setInbox((prev) =>
+      prev.filter(
+        (item) => !(item.type === "friend_request" && item.body === body)
+      )
+    )
+  }, [])
+
   const value = useMemo(
     () => ({
       inbox,
@@ -78,8 +117,19 @@ export const NotificationProvider = ({
       notify,
       markAllRead,
       dismissToast,
+      upsertFriendRequestInbox,
+      removeInboxByFriendUsername,
     }),
-    [inbox, unreadCount, toasts, notify, markAllRead, dismissToast]
+    [
+      inbox,
+      unreadCount,
+      toasts,
+      notify,
+      markAllRead,
+      dismissToast,
+      upsertFriendRequestInbox,
+      removeInboxByFriendUsername,
+    ]
   )
 
   return (
