@@ -1,7 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Image from "next/image"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import gsap from "gsap"
+import { ScrollToPlugin } from "gsap/ScrollToPlugin"
 import { Menu } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -14,22 +18,101 @@ import {
 } from "@/components/ui/sheet"
 import { navLinks } from "@/components/landing/landing-data"
 import { cn } from "@/lib/utils"
-import Link from "next/link"
+
+gsap.registerPlugin(ScrollToPlugin)
+
+const HEADER_OFFSET = 80
+const SCROLL_DURATION = 1
+const SCROLL_EASE = "power2.inOut"
+
+const getHashFromHref = (href: string): string | null => {
+  const hashIndex = href.indexOf("#")
+  if (hashIndex === -1) return null
+  return href.slice(hashIndex + 1)
+}
+
+const isInPageScrollHref = (href: string): boolean => {
+  return href === "/" || href.startsWith("/#")
+}
+
+const scrollToTarget = (target: string | number) => {
+  gsap.to(window, {
+    duration: SCROLL_DURATION,
+    ease: SCROLL_EASE,
+    scrollTo: {
+      y: target,
+      offsetY: typeof target === "number" ? 0 : HEADER_OFFSET,
+      autoKill: true,
+    },
+  })
+}
 
 export const LandingHeader = () => {
+  const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
 
   const handleClose = () => {
     setIsOpen(false)
   }
 
+  const handleScrollToHash = useCallback((hash: string) => {
+    const el = document.getElementById(hash)
+    if (!el) return
+    scrollToTarget(`#${hash}`)
+    window.history.pushState(null, "", `/#${hash}`)
+  }, [])
+
+  useEffect(() => {
+    if (pathname !== "/") return
+
+    const hash = window.location.hash.replace("#", "")
+    if (!hash) return
+
+    const frameId = requestAnimationFrame(() => {
+      const el = document.getElementById(hash)
+      if (!el) return
+      scrollToTarget(`#${hash}`)
+    })
+
+    return () => cancelAnimationFrame(frameId)
+  }, [pathname])
+
+  const handleNavClick = (
+    event: React.MouseEvent<HTMLAnchorElement>,
+    href: string,
+  ) => {
+    if (!isInPageScrollHref(href)) {
+      handleClose()
+      return
+    }
+
+    if (pathname !== "/") {
+      handleClose()
+      return
+    }
+
+    event.preventDefault()
+    handleClose()
+
+    const hash = getHashFromHref(href)
+
+    if (href === "/" || !hash) {
+      scrollToTarget(0)
+      window.history.pushState(null, "", "/")
+      return
+    }
+
+    handleScrollToHash(hash)
+  }
+
   return (
     <header className="fixed top-0 z-50 w-full border-b border-white/5 bg-surface-base/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-6">
         <Link
-          href="#"
+          href="/"
           className="flex items-center gap-2.5 text-white transition-opacity hover:opacity-90"
           aria-label="Watchly home"
+          onClick={(event) => handleNavClick(event, "/")}
         >
           <Image
             src="/Logo/Logo.png"
@@ -48,6 +131,7 @@ export const LandingHeader = () => {
             <Link
               key={link.label}
               href={link.href}
+              onClick={(event) => handleNavClick(event, link.href)}
               className="text-sm font-medium text-text-muted transition-colors hover:text-white"
             >
               {link.label}
@@ -62,14 +146,18 @@ export const LandingHeader = () => {
             className="text-sm font-medium text-text-muted hover:bg-white/5 hover:text-white"
             aria-label="Sign in"
           >
-            <Link href="/auth/sign-in" className="text-sm font-medium">Sign In</Link>
+            <Link href="/auth/sign-in" className="text-sm font-medium">
+              Sign In
+            </Link>
           </Button>
           <Button
             size="sm"
             className="h-9 rounded-full bg-amber-flame px-5 text-sm font-bold text-ink-black hover:bg-white"
             aria-label="Get started"
           >
-            <Link href="/auth/sign-up" className="text-sm font-medium">Get Started</Link>
+            <Link href="/auth/sign-up" className="text-sm font-medium">
+              Get Started
+            </Link>
           </Button>
         </div>
 
@@ -95,7 +183,7 @@ export const LandingHeader = () => {
                 <Link
                   key={link.label}
                   href={link.href}
-                  onClick={handleClose}
+                  onClick={(event) => handleNavClick(event, link.href)}
                   className="rounded-lg px-3 py-3 text-sm font-medium text-text-muted transition-colors hover:bg-white/5 hover:text-white"
                 >
                   {link.label}
@@ -109,14 +197,18 @@ export const LandingHeader = () => {
                 aria-label="Sign in"
                 onClick={handleClose}
               >
-                <Link href="/auth/sign-in" className="text-sm font-medium">Sign In</Link>
+                <Link href="/auth/sign-in" className="text-sm font-medium">
+                  Sign In
+                </Link>
               </Button>
               <Button
                 className="rounded-full bg-amber-flame font-bold text-ink-black hover:bg-white"
                 aria-label="Get started"
                 onClick={handleClose}
               >
-                <Link href="/auth/sign-up" className="text-sm font-medium">Get Started</Link>
+                <Link href="/auth/sign-up" className="text-sm font-medium">
+                  Get Started
+                </Link>
               </Button>
             </div>
           </SheetContent>

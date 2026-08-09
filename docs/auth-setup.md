@@ -9,7 +9,7 @@ Copy `.env.example` to `.env.local` and set:
 
 ## Supabase Dashboard
 
-Project: **watchly** (`hfrfpodvnnqfujpfxfjg`)
+Project: **watchly** (``)
 
 ### Redirect URLs
 

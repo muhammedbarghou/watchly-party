@@ -1,125 +1,169 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { images } from "@/components/landing/landing-data";
+import { cn } from "@/lib/utils";
 
-export const LandingFeatures = () => {
+interface FeatureItem {
+  id: number;
+  title: string;
+  image: string;
+  description: string;
+}
+
+interface LandingFeaturesProps {
+  features?: FeatureItem[];
+  className?: string;
+}
+
+const defaultFeatures: FeatureItem[] = [
+  {
+    id: 1,
+    title: "Watch Together, Perfectly in Sync",
+    image: images.syncWaveform,
+    description:
+      'Every play, pause, and seek happens for everyone at once — no more "wait, pause it, I have to grab a drink" chaos over text.',
+  },
+  {
+    id: 2,
+    title: "Your Own Room, Your Rules",
+    image: images.stepCreate,
+    description:
+      "Spin up a room in seconds with a unique code. Keep it private with a password, or open it up — you decide who gets in.",
+  },
+  {
+    id: 3,
+    title: "Talk Over It, Not Around It",
+    image: images.voiceChat,
+    description:
+      'Built-in voice chat means you can react in real time, not type "LMAOOO" three seconds after the moment\'s already passed.',
+  },
+  {
+    id: 4,
+    title: "Live Chat That Stays in the Room",
+    image: images.syncNetwork,
+    description:
+      "Real-time text chat runs alongside the video — casual, in-the-moment, and it clears out when the room does, so nothing lingers.",
+  },
+  {
+    id: 5,
+    title: "See When Your Friends Are Watching",
+    image: images.stepInvite,
+    description:
+      "Add friends and catch their live rooms right from your home page — jump in on movie night without a text thread.",
+  },
+  {
+    id: 6,
+    title: "You're the Host",
+    image: images.spatial3d,
+    description:
+      "Room admins control playback, hand the remote to someone else mid-session, and manage who's in the room — kick, mute, or ban if you need to.",
+  },
+];
+
+const LandingFeatures = ({
+  features = defaultFeatures,
+  className,
+}: LandingFeaturesProps) => {
+  const [activeTabId, setActiveTabId] = useState<number | null>(
+    features[0]?.id ?? null,
+  );
+  const [activeImage, setActiveImage] = useState(
+    features[0]?.image ?? images.syncWaveform,
+  );
+
+  const handleValueChange = (value: string[]) => {
+    const nextValue = value[0];
+    if (!nextValue) {
+      setActiveTabId(null);
+      return;
+    }
+
+    const nextId = Number(nextValue.replace("item-", ""));
+    const nextFeature = features.find((feature) => feature.id === nextId);
+
+    setActiveTabId(nextId);
+    setActiveImage(nextFeature?.image ?? features[0].image);
+  };
+
   return (
-    <section id="features" className="mb-32">
-      <div className="mb-16 flex flex-col items-end justify-between gap-6 md:flex-row">
-        <div className="max-w-xl space-y-4">
-          <Badge
-            variant="outline"
-            className="rounded-none border-none bg-transparent p-0 text-xs font-bold tracking-[0.25em] text-text-muted uppercase"
-          >
-            Why Watchly
-          </Badge>
-          <h2 className="text-5xl font-bold">
-            Built for connection, not just playback.
-          </h2>
+    <section id="features" className={cn("py-32", className)}>
+      <div className="container mx-auto">
+        <h2 className="mb-12 text-3xl font-semibold md:text-4xl">Features</h2>
+        <div className="flex w-full items-start justify-between gap-12">
+          <div className="w-full md:w-1/2">
+            <Accordion
+              className="w-full"
+              value={activeTabId ? [`item-${activeTabId}`] : []}
+              onValueChange={handleValueChange}
+            >
+              {features.map((feature) => (
+                <AccordionItem
+                  key={feature.id}
+                  value={`item-${feature.id}`}
+                  className="transition-opacity hover:opacity-80"
+                >
+                  <AccordionTrigger className="cursor-pointer py-5 no-underline! transition">
+                    <h3
+                      className={cn(
+                        "text-left text-xl",
+                        feature.id === activeTabId
+                          ? "text-foreground"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {feature.title}
+                    </h3>
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-2">
+                    <p className="text-base text-muted-foreground">
+                      {feature.description}
+                    </p>
+                    <div className="relative mt-4 aspect-4/3 md:hidden">
+                      <Image
+                        src={feature.image}
+                        alt={feature.title}
+                        fill
+                        className="rounded-md object-cover"
+                        sizes="100vw"
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+          <div className="relative hidden w-1/2 overflow-hidden rounded-xl bg-muted md:block">
+            <div className="relative aspect-4/3">
+              {features.map((feature) => (
+                <Image
+                  key={feature.id}
+                  src={feature.image}
+                  alt={feature.title}
+                  fill
+                  className={cn(
+                    "rounded-md object-cover transition-opacity duration-500",
+                    activeImage === feature.image
+                      ? "opacity-100"
+                      : "opacity-0",
+                  )}
+                  sizes="50vw"
+                />
+              ))}
+            </div>
+          </div>
         </div>
-        <p className="max-w-sm text-text-muted">
-          Every detail is tuned so the distance disappears and the shared moment
-          takes over.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="glass-panel group relative overflow-hidden rounded-3xl border-none bg-transparent p-8 ring-0 transition-all duration-500 hover:bg-white/5 lg:col-span-2">
-          <div className="grid items-center gap-8 md:grid-cols-2">
-            <div className="space-y-4">
-              <h3 className="text-3xl font-bold">Real-time Playback Sync</h3>
-              <p className="text-text-muted">
-                Frame-perfect synchronization means everyone laughs, gasps, and
-                pauses at exactly the same moment — no buffering drift across
-                rooms or continents.
-              </p>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <Image
-                src={images.syncWaveform}
-                alt="abstract visualization of perfectly synced audio waveforms, deep crimson and amber glow, dark background"
-                width={200}
-                height={250}
-                className="aspect-[4/5] w-full rounded-xl object-cover"
-              />
-              <Image
-                src={images.syncDevices}
-                alt="close-up of multiple devices showing identical video frames in sync, moody cinematic lighting"
-                width={200}
-                height={250}
-                className="mt-6 aspect-[4/5] w-full rounded-xl object-cover"
-              />
-              <Image
-                src={images.syncNetwork}
-                alt="network latency visualization turning into smooth connected lines, dark tech aesthetic"
-                width={200}
-                height={250}
-                className="aspect-[4/5] w-full rounded-xl object-cover"
-              />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="glass-panel group overflow-hidden rounded-3xl border-none bg-transparent p-8 ring-0 transition-all duration-500 hover:bg-white/5">
-          <h3 className="mb-4 text-2xl font-bold">3D Spatial Environment</h3>
-          <p className="mb-8 text-text-muted">
-            Step inside immersive Three.js theaters you can explore before the
-            lights dim.
-          </p>
-          <Image
-            src={images.spatial3d}
-            alt="virtual 3D amphitheater with neon-lit seating and a large central screen, dark atmospheric scene, 3D"
-            width={400}
-            height={400}
-            className="aspect-square w-full rounded-xl object-cover grayscale transition-all duration-700 group-hover:grayscale-0"
-          />
-        </Card>
-
-        <Card className="glass-panel group overflow-hidden rounded-3xl border-none bg-transparent p-8 ring-0 transition-all duration-500 hover:bg-white/5">
-          <h3 className="mb-4 text-2xl font-bold">Voice & Text Chat</h3>
-          <p className="mb-8 text-text-muted">
-            React and talk live with low-latency spatial voice that sounds like
-            you&apos;re in the same row.
-          </p>
-          <Image
-            src={images.voiceChat}
-            alt="floating translucent chat bubbles and waveform icons in a dark virtual space, glowing amber accents"
-            width={400}
-            height={400}
-            className="aspect-square w-full rounded-xl object-cover grayscale transition-all duration-700 group-hover:grayscale-0"
-          />
-        </Card>
-
-        <Card className="glass-panel group relative overflow-hidden rounded-3xl border-none bg-transparent p-8 ring-0 transition-all duration-500 hover:bg-white/5 lg:col-span-2">
-          <div className="grid items-center gap-8 md:grid-cols-2">
-            <div className="grid grid-cols-2 gap-4">
-              <Image
-                src={images.avatar1}
-                alt="stylized 3D avatar character bust, expressive face, dark studio lighting, vibrant colors"
-                width={300}
-                height={300}
-                className="aspect-square w-full rounded-xl object-cover"
-              />
-              <Image
-                src={images.avatar2}
-                alt="stylized 3D avatar character bust, different personality, dark studio lighting, vibrant colors"
-                width={300}
-                height={300}
-                className="aspect-square w-full rounded-xl object-cover"
-              />
-            </div>
-            <div className="space-y-4">
-              <h3 className="text-3xl font-bold">Custom Avatars</h3>
-              <p className="text-text-muted">
-                Express yourself with fully customizable avatars that react and
-                emote alongside the story.
-              </p>
-            </div>
-          </div>
-        </Card>
       </div>
     </section>
   );
 };
+
+export { LandingFeatures };

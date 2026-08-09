@@ -135,10 +135,10 @@ export const LandingFooter = () => {
         <div className="mt-10 flex flex-col items-center justify-between text-xs text-text-faint md:flex-row">
           <p>&copy; 2026 Watchly Inc. All rights reserved.</p>
           <div className="mt-4 flex space-x-6 md:mt-0">
-            <a href="#" className="hover:text-white">
+            <a href="/privacy" className="hover:text-white">
               Privacy Policy
             </a>
-            <a href="#" className="hover:text-white">
+            <a href="/terms" className="hover:text-white">
               Terms of Service
             </a>
           </div>
