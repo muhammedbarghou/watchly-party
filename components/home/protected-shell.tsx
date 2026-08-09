@@ -1,6 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
+import { usePathname } from "next/navigation"
 
 import { AppNav } from "@/components/home/app-nav"
 import { NotificationProvider } from "@/components/notifications/notification-provider"
@@ -17,10 +18,15 @@ export const ProtectedShell = ({
   displayName,
   avatarUrl,
 }: ProtectedShellProps) => {
+  const pathname = usePathname()
+  const hideAppNav = pathname.startsWith("/room/")
+
   return (
     <NotificationProvider>
       <div className="min-h-screen bg-ink-black text-[#f3eadc]">
-        <AppNav displayName={displayName} avatarUrl={avatarUrl} />
+        {hideAppNav ? null : (
+          <AppNav displayName={displayName} avatarUrl={avatarUrl} />
+        )}
         {children}
         <NotificationToastRegion />
       </div>

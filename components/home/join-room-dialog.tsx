@@ -18,6 +18,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { mockJoinRoom } from "@/lib/home/fixtures"
+import { stashRoomPassword } from "@/lib/room/password-store"
 
 type JoinRoomDialogProps = {
   open: boolean
@@ -73,6 +74,9 @@ export const JoinRoomDialog = ({
     notify("Joined room")
     setIsSubmitting(false)
     onOpenChange(false)
+    if (password) {
+      stashRoomPassword(result.uid, password)
+    }
     resetForm()
     router.push(`/room/${result.uid}`)
   }

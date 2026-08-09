@@ -27,6 +27,7 @@ import {
   createMockRoomUid,
   isValidHttpUrl,
 } from "@/lib/home/fixtures"
+import { stashCreatedRoomMeta } from "@/lib/room/password-store"
 import type { RoomCardData } from "@/lib/home/types"
 
 type CreateRoomDialogProps = {
@@ -131,6 +132,12 @@ export const CreateRoomDialog = ({
     notify("Room created")
     setIsSubmitting(false)
     onOpenChange(false)
+    stashCreatedRoomMeta(uid, {
+      name: room.name,
+      videoUrl: room.videoUrl,
+      password: formState.isPrivate ? formState.password.trim() : undefined,
+      isPrivate: formState.isPrivate,
+    })
     resetForm()
     router.push(`/room/${uid}`)
   }
