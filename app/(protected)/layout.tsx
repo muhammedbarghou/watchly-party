@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 
+import { ProtectedShell } from "@/components/home/protected-shell"
 import { createClient } from "@/lib/supabase/server"
 
 const ProtectedLayout = async ({
@@ -14,7 +15,28 @@ const ProtectedLayout = async ({
     redirect("/auth/sign-in")
   }
 
-  return <>{children}</>
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const displayName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email ||
+    "viewer"
+
+  const avatarUrl =
+    typeof user?.user_metadata?.avatar_url === "string"
+      ? user.user_metadata.avatar_url
+      : typeof user?.user_metadata?.picture === "string"
+        ? user.user_metadata.picture
+        : null
+
+  return (
+    <ProtectedShell displayName={displayName} avatarUrl={avatarUrl}>
+      {children}
+    </ProtectedShell>
+  )
 }
 
 export default ProtectedLayout
