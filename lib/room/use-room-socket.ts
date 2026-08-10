@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { messageForRoomError } from "@/lib/room/error-messages"
 import { readRoomPassword } from "@/lib/room/password-store"
@@ -31,6 +31,7 @@ type UseRoomSocketResult = {
   messages: ChatMessage[]
   playback: PlaybackState | null
   removalReason: RemovalReason
+  socket: RoomSocket | null
   emit: <K extends ClientEventName>(
     event: K,
     payload: ClientToServerEvents[K]
@@ -48,6 +49,7 @@ export const useRoomSocket = ({
   const [roomState, setRoomState] = useState<RoomState | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [removalReason, setRemovalReason] = useState<RemovalReason>(null)
+  const [socket, setSocket] = useState<RoomSocket | null>(null)
   const socketRef = useRef<RoomSocket | null>(null)
 
   const userId = currentUser.id
@@ -62,6 +64,7 @@ export const useRoomSocket = ({
       setRoomState(null)
       setMessages([])
       setRemovalReason(null)
+      setSocket(null)
 
       let socket: RoomSocket
       try {
@@ -84,6 +87,7 @@ export const useRoomSocket = ({
       }
 
       socketRef.current = socket
+      setSocket(socket)
 
       const handleConnect = () => {
         const password = readRoomPassword(roomUid)
@@ -257,10 +261,11 @@ export const useRoomSocket = ({
       cancelled = true
       socketRef.current?.disconnect()
       socketRef.current = null
+      setSocket(null)
     }
   }, [roomUid, userId])
 
-  const emit = <K extends ClientEventName>(
+  const emit = useCallback(<K extends ClientEventName>(
     event: K,
     payload: ClientToServerEvents[K]
   ) => {
@@ -270,13 +275,13 @@ export const useRoomSocket = ({
       event,
       payload
     )
-  }
+  }, [])
 
-  const leave = () => {
+  const leave = useCallback(() => {
     socketRef.current?.emit("leave_room", {})
     socketRef.current?.disconnect()
     setStatus("left")
-  }
+  }, [])
 
   return {
     status,
@@ -287,6 +292,7 @@ export const useRoomSocket = ({
     messages,
     playback: roomState?.playbackState ?? null,
     removalReason,
+    socket,
     emit,
     leave,
   }

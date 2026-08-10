@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { messageForRoomError } from "@/lib/room/error-messages"
 import { useRoomSocket } from "@/lib/room/use-room-socket"
+import { useVoiceChat } from "@/lib/room/use-voice-chat"
 import type { CurrentUser } from "@/lib/room/types"
 
 type RoomExperienceProps = {
@@ -26,11 +27,16 @@ type RoomExperienceProps = {
 const titleForErrorCode = (code: string | null): string => {
   switch (code) {
     case "NOT_FOUND":
+    case "ROOM_NOT_FOUND":
       return "Room not found"
     case "BAD_PASSWORD":
+    case "INVALID_PASSWORD":
       return "Password required"
     case "BANNED":
       return "Banned from this room"
+    case "FORBIDDEN":
+    case "NOT_AUTHORIZED":
+      return "Not authorized"
     case "ROOM_FULL":
       return "Room is full"
     case "ROOM_CLOSED":
@@ -57,9 +63,24 @@ export const RoomExperience = ({
     messages,
     playback,
     removalReason,
+    socket,
     emit,
     leave,
   } = useRoomSocket({ roomUid, currentUser })
+
+  const selfParticipant = participants.find((p) => p.id === currentUser.id)
+  const selfMuted = Boolean(selfParticipant?.muted)
+
+  useVoiceChat({
+    socket,
+    selfId: currentUser.id,
+    participants,
+    selfMuted,
+    enabled: status === "joined" && Boolean(roomState),
+    onMicDenied: () => {
+      notify("Microphone access denied — voice chat is unavailable")
+    },
+  })
 
   const prevAdminId = useRef<string | null>(null)
   const notifiedMute = useRef(false)

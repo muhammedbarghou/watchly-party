@@ -12,6 +12,7 @@ import {
 } from "@/components/kibo-ui/video-player"
 
 const DRIFT_THRESHOLD_MS = 1400
+const SYNC_PING_INTERVAL_MS = 1500
 
 type RoomVideoPlayerProps = {
   videoUrl: string
@@ -37,6 +38,8 @@ export const RoomVideoPlayer = ({
   const playerRef = useRef<VideoPlayerSyncedHandle>(null)
   const applyingSync = useRef(false)
   const lastEmittedAction = useRef(0)
+  const playbackRef = useRef(playback)
+  playbackRef.current = playback
 
   useEffect(() => {
     const player = playerRef.current
@@ -54,6 +57,17 @@ export const RoomVideoPlayer = ({
       }, 250)
     }
   }, [playback])
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const clientPositionMs =
+        playerRef.current?.getCurrentTimeMs() ??
+        playbackRef.current.positionMs
+      emit("sync_ping", { clientPositionMs })
+    }, SYNC_PING_INTERVAL_MS)
+
+    return () => window.clearInterval(id)
+  }, [emit])
 
   const handlePlay = () => {
     if (!canControl || applyingSync.current) return

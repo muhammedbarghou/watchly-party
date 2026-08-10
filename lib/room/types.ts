@@ -58,6 +58,9 @@ export type ClientToServerEvents = {
   ban_user: { targetUserId: string }
   transfer_admin: { targetUserId: string }
   self_mute: { muted: boolean }
+  rtc_offer: { targetUserId: string; payload: RTCSessionDescriptionInit }
+  rtc_answer: { targetUserId: string; payload: RTCSessionDescriptionInit }
+  rtc_ice_candidate: { targetUserId: string; payload: RTCIceCandidateInit }
 }
 
 /** Server → Client event payloads */
@@ -76,6 +79,9 @@ export type ServerToClientEvents = {
   user_banned: { userId: string }
   user_muted: { userId: string; muted: boolean; byAdmin?: boolean }
   admin_changed: { newAdminId: string }
+  rtc_offer: { fromUserId: string; payload: RTCSessionDescriptionInit }
+  rtc_answer: { fromUserId: string; payload: RTCSessionDescriptionInit }
+  rtc_ice_candidate: { fromUserId: string; payload: RTCIceCandidateInit }
   error: RoomError
 }
 

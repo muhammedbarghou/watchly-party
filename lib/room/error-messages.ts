@@ -1,8 +1,11 @@
 const ROOM_ERROR_MESSAGES: Record<string, string> = {
   NOT_FOUND: "This room doesn't exist.",
+  ROOM_NOT_FOUND: "This room doesn't exist.",
   BAD_PASSWORD: "Incorrect password, or this room requires a password.",
+  INVALID_PASSWORD: "Incorrect password, or this room requires a password.",
   BANNED: "You've been banned from this room.",
   FORBIDDEN: "You don't have permission to do that.",
+  NOT_AUTHORIZED: "You don't have permission to do that.",
   ROOM_FULL: "This room is full.",
   ROOM_CLOSED: "This room is closed.",
   RATE_LIMITED: "Too many join attempts. Wait a moment and try again.",
