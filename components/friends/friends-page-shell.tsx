@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import Link from "next/link"
 import { MoreHorizontalIcon, SearchIcon, UsersIcon } from "lucide-react"
 
@@ -64,36 +64,81 @@ export const FriendsPageShell = () => {
   const [lookupError, setLookupError] = useState<"not_found" | "self" | null>(
     null
   )
+  const [isSearching, setIsSearching] = useState(false)
+  const [isSending, setIsSending] = useState(false)
 
   const filteredFriends = filterFriends(friendFilter)
+  const lookupUsernameKey = lookupResult?.ok
+    ? lookupResult.user.username
+    : null
+  const lookupRelation = lookupResult?.ok ? lookupResult.relation : null
+
+  useEffect(() => {
+    if (!lookupUsernameKey) return
+
+    let cancelled = false
+    const refreshLookup = async () => {
+      const refreshed = await lookupUsername(lookupUsernameKey)
+      if (cancelled) return
+      if (!refreshed.ok) {
+        setLookupResult(null)
+        return
+      }
+      if (refreshed.relation !== lookupRelation) {
+        setLookupResult(refreshed)
+      }
+    }
+    void refreshLookup()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    friends,
+    incoming,
+    outgoing,
+    lookupUsername,
+    lookupUsernameKey,
+    lookupRelation,
+  ])
 
   const handleConfirmRemove = () => {
     if (!removeTarget) return
-    removeFriend(removeTarget.id)
+    void removeFriend(removeTarget.id)
     setRemoveTarget(null)
   }
 
-  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSearchSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const result = lookupUsername(searchQuery)
-    if (!result.ok) {
-      setLookupResult(null)
-      setLookupError(result.error)
-      return
+    setIsSearching(true)
+    try {
+      const result = await lookupUsername(searchQuery)
+      if (!result.ok) {
+        setLookupResult(null)
+        setLookupError(result.error)
+        return
+      }
+      setLookupError(null)
+      setLookupResult(result)
+    } finally {
+      setIsSearching(false)
     }
-    setLookupError(null)
-    setLookupResult(result)
   }
 
-  const handleSendRequest = () => {
+  const handleSendRequest = async () => {
     if (!lookupResult?.ok || lookupResult.relation !== "none") return
-    const sent = sendRequest(lookupResult.user.username)
-    if (sent) {
-      setLookupResult({
-        ok: true,
-        user: lookupResult.user,
-        relation: "outgoing_pending",
-      })
+    setIsSending(true)
+    try {
+      const sent = await sendRequest(lookupResult.user.username)
+      if (sent) {
+        setLookupResult({
+          ok: true,
+          user: lookupResult.user,
+          relation: "outgoing_pending",
+        })
+      }
+    } finally {
+      setIsSending(false)
     }
   }
 
@@ -111,7 +156,8 @@ export const FriendsPageShell = () => {
           Your circle
         </h1>
         <p className="mt-2 max-w-xl text-sm text-[#f3eadc]/60">
-          Manage friendships, answer requests, and find people by username.
+          Manage friendships, answer requests, and find people by username
+          (the part of their email before @).
         </p>
       </div>
 
@@ -278,7 +324,7 @@ export const FriendsPageShell = () => {
                             <Button
                               type="button"
                               className="bg-amber-flame text-ink-black hover:bg-[#e5a500]"
-                              onClick={() => acceptRequest(row.id)}
+                              onClick={() => void acceptRequest(row.id)}
                               aria-label={`Accept friend request from ${row.otherUser.username}`}
                             >
                               Accept
@@ -287,7 +333,7 @@ export const FriendsPageShell = () => {
                               type="button"
                               variant="ghost"
                               className="text-[#f3eadc] hover:bg-white/5"
-                              onClick={() => declineRequest(row.id)}
+                              onClick={() => void declineRequest(row.id)}
                               aria-label={`Decline friend request from ${row.otherUser.username}`}
                             >
                               Decline
@@ -319,7 +365,7 @@ export const FriendsPageShell = () => {
                             type="button"
                             variant="ghost"
                             className="text-[#f3eadc] hover:bg-white/5"
-                            onClick={() => cancelRequest(row.id)}
+                            onClick={() => void cancelRequest(row.id)}
                             aria-label={`Cancel friend request to ${row.otherUser.username}`}
                           >
                             Cancel request
@@ -336,8 +382,12 @@ export const FriendsPageShell = () => {
 
         <TabsContent value="add" className="outline-none">
           <div className="max-w-lg space-y-4">
+            <p className="text-sm text-[#f3eadc]/55">
+              Search by username — the part of their email before the{" "}
+              <span className="text-[#f3eadc]/80">@</span> symbol.
+            </p>
             <form
-              onSubmit={handleSearchSubmit}
+              onSubmit={(event) => void handleSearchSubmit(event)}
               className="flex flex-col gap-3 sm:flex-row"
             >
               <Input
@@ -347,17 +397,18 @@ export const FriendsPageShell = () => {
                   setSearchQuery(event.target.value)
                   setLookupError(null)
                 }}
-                placeholder="Username"
-                aria-label="Search by username"
+                placeholder="e.g. alex from alex@email.com"
+                aria-label="Search by username (email before @)"
                 autoComplete="off"
                 className="border-night-bordeaux/50 bg-ink-black text-[#f3eadc] placeholder:text-[#f3eadc]/40"
               />
               <Button
                 type="submit"
+                disabled={isSearching || !searchQuery.trim()}
                 className="bg-amber-flame text-ink-black hover:bg-[#e5a500] sm:shrink-0"
                 aria-label="Search for user"
               >
-                Search
+                {isSearching ? "Searching…" : "Search"}
               </Button>
             </form>
 
@@ -368,8 +419,8 @@ export const FriendsPageShell = () => {
               >
                 <AlertTitle>User not found</AlertTitle>
                 <AlertDescription className="text-[#f3eadc]/70">
-                  No account matches that username. Check the spelling and try
-                  again.
+                  No account matches that username. Use the part of their email
+                  before @ and try again.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -412,11 +463,12 @@ export const FriendsPageShell = () => {
                     ) : (
                       <Button
                         type="button"
+                        disabled={isSending}
                         className="bg-amber-flame text-ink-black hover:bg-[#e5a500]"
-                        onClick={handleSendRequest}
+                        onClick={() => void handleSendRequest()}
                         aria-label={`Send friend request to ${lookupResult.user.username}`}
                       >
-                        Send request
+                        {isSending ? "Sending…" : "Send request"}
                       </Button>
                     )
                   }

@@ -67,6 +67,12 @@ type RecentRoomRow = {
   created_by: string
 }
 
+type RoomHost = {
+  id: string
+  username: string
+  avatarUrl: string | null
+}
+
 const DEFAULT_POSTER =
   "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=640&h=360&fit=crop"
 
@@ -76,8 +82,28 @@ const RECENT_ROOMS_SELECT =
 const RECENT_ROOMS_SELECT_LEGACY =
   "id, uid, name, status, video_url, is_private, visible_to_friends, created_at, created_by"
 
+const mapRoomCard = (row: RecentRoomRow, host: RoomHost): RoomCardData => ({
+  id: row.id,
+  uid: row.uid,
+  name: row.name,
+  status: row.status === "closed" ? "closed" : "active",
+  videoUrl: row.video_url,
+  posterUrl: DEFAULT_POSTER,
+  host: {
+    id: host.id,
+    username: host.username,
+    avatarUrl: host.avatarUrl,
+  },
+  participantCount: 0,
+  requiresApproval: false,
+  isPrivate: Boolean(row.is_private),
+  visibleToFriends: Boolean(row.visible_to_friends),
+  createdAt: row.created_at ?? new Date().toISOString(),
+  closedAt: row.status === "closed" ? (row.closed_at ?? null) : null,
+})
+
 export const fetchMyRecentRooms = async (
-  host: { id: string; username: string; avatarUrl: string | null }
+  host: RoomHost
 ): Promise<RoomCardData[]> => {
   const supabase = createClient()
   const primary = await supabase
@@ -107,23 +133,65 @@ export const fetchMyRecentRooms = async (
     return []
   }
 
-  return data.map((row) => ({
-    id: row.id,
-    uid: row.uid,
-    name: row.name,
-    status: row.status === "closed" ? "closed" : "active",
-    videoUrl: row.video_url,
-    posterUrl: DEFAULT_POSTER,
-    host: {
-      id: host.id,
-      username: host.username,
-      avatarUrl: host.avatarUrl,
-    },
-    participantCount: 0,
-    requiresApproval: false,
-    isPrivate: Boolean(row.is_private),
-    visibleToFriends: Boolean(row.visible_to_friends),
-    createdAt: row.created_at ?? new Date().toISOString(),
-    closedAt: row.status === "closed" ? (row.closed_at ?? null) : null,
-  }))
+  return data.map((row) => mapRoomCard(row, host))
+}
+
+/** Active rooms hosted by accepted friends with visible_to_friends. */
+export const fetchFriendsLiveRooms = async (
+  friends: RoomHost[]
+): Promise<RoomCardData[]> => {
+  if (friends.length === 0) return []
+
+  const hostById = new Map(friends.map((friend) => [friend.id, friend]))
+  const friendIds = friends.map((friend) => friend.id)
+  const supabase = createClient()
+
+  const primary = await supabase
+    .from("rooms")
+    .select(RECENT_ROOMS_SELECT)
+    .in("created_by", friendIds)
+    .eq("status", "active")
+    .eq("visible_to_friends", true)
+    .order("created_at", { ascending: false })
+    .limit(24)
+
+  let data: RecentRoomRow[] | null = primary.data as RecentRoomRow[] | null
+  let error = primary.error
+
+  if (error?.code === "42703") {
+    const legacy = await supabase
+      .from("rooms")
+      .select(RECENT_ROOMS_SELECT_LEGACY)
+      .in("created_by", friendIds)
+      .eq("status", "active")
+      .eq("visible_to_friends", true)
+      .order("created_at", { ascending: false })
+      .limit(24)
+
+    data = legacy.data as RecentRoomRow[] | null
+    error = legacy.error
+  }
+
+  if (error || !data) {
+    return []
+  }
+
+  return data.flatMap((row) => {
+    const host = hostById.get(row.created_by)
+    if (!host) return []
+    return [mapRoomCard(row, host)]
+  })
+}
+
+/** Map of friend user id → live room uid for friends list badges. */
+export const buildLiveRoomByFriendId = (
+  rooms: RoomCardData[]
+): Map<string, string> => {
+  const map = new Map<string, string>()
+  for (const room of rooms) {
+    if (!map.has(room.host.id)) {
+      map.set(room.host.id, room.uid)
+    }
+  }
+  return map
 }

@@ -223,10 +223,9 @@ export const RoomExperience = ({
         onLeave={handleLeave}
       />
 
-      {/* Desktop: video + sidebar */}
-      <div className="hidden min-h-0 flex-1 sm:flex">
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 p-3">
+          <div className="shrink-0 p-2 sm:min-h-0 sm:flex-1 sm:p-3">
             <RoomVideoPlayer
               videoUrl={roomState.videoUrl}
               playback={playback}
@@ -239,60 +238,46 @@ export const RoomExperience = ({
             selfId={currentUser.id}
             onToggleSelfMute={handleToggleSelfMute}
           />
+          <Tabs
+            defaultValue="chat"
+            className="min-h-0 flex-1 px-2 pb-2 sm:hidden"
+          >
+            <TabsList className="w-full bg-night-bordeaux/40">
+              <TabsTrigger value="chat" className="flex-1">
+                Chat
+              </TabsTrigger>
+              <TabsTrigger value="people" className="flex-1">
+                People
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent
+              value="chat"
+              className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-night-bordeaux/40"
+            >
+              <RoomChat
+                messages={messages}
+                selfId={currentUser.id}
+                onSend={handleSendChat}
+                className="min-h-[40vh] flex-1"
+              />
+            </TabsContent>
+            <TabsContent
+              value="people"
+              className="mt-2 overflow-hidden rounded-lg border border-night-bordeaux/40"
+            >
+              <RoomParticipantList
+                participants={participants}
+                adminId={roomState.adminId}
+                selfId={currentUser.id}
+                isAdmin={isAdmin}
+                emit={emit}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
-        <aside className="flex w-80 shrink-0 flex-col border-l border-night-bordeaux/50 bg-ink-black lg:w-96">
+        <aside className="hidden w-80 shrink-0 flex-col border-l border-night-bordeaux/50 bg-ink-black sm:flex lg:w-96">
           {sidebar}
         </aside>
-      </div>
-
-      {/* Mobile: stacked + tabs */}
-      <div className="flex min-h-0 flex-1 flex-col sm:hidden">
-        <div className="shrink-0 p-2">
-          <RoomVideoPlayer
-            videoUrl={roomState.videoUrl}
-            playback={playback}
-            canControl={canControl}
-            emit={emit}
-          />
-        </div>
-        <RoomVoiceStrip
-          participants={participants}
-          selfId={currentUser.id}
-          onToggleSelfMute={handleToggleSelfMute}
-        />
-        <Tabs defaultValue="chat" className="min-h-0 flex-1 px-2 pb-2">
-          <TabsList className="w-full bg-night-bordeaux/40">
-            <TabsTrigger value="chat" className="flex-1">
-              Chat
-            </TabsTrigger>
-            <TabsTrigger value="people" className="flex-1">
-              People
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent
-            value="chat"
-            className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-night-bordeaux/40"
-          >
-            <RoomChat
-              messages={messages}
-              selfId={currentUser.id}
-              onSend={handleSendChat}
-              className="min-h-[40vh] flex-1"
-            />
-          </TabsContent>
-          <TabsContent
-            value="people"
-            className="mt-2 overflow-hidden rounded-lg border border-night-bordeaux/40"
-          >
-            <RoomParticipantList
-              participants={participants}
-              adminId={roomState.adminId}
-              selfId={currentUser.id}
-              isAdmin={isAdmin}
-              emit={emit}
-            />
-          </TabsContent>
-        </Tabs>
       </div>
     </div>
   )

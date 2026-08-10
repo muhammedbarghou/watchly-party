@@ -4,17 +4,31 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
 
 import { useNotifications } from "@/components/notifications/notification-provider"
+import {
+  acceptFriendRequest,
+  deleteFriendship,
+  fetchFriendships,
+  lookupUsername as lookupUsernameApi,
+  sendFriendRequest,
+} from "@/lib/friends/api"
 import type {
   FriendLookupResult,
   FriendshipRow,
 } from "@/lib/friends/types"
+import {
+  buildLiveRoomByFriendId,
+  fetchFriendsLiveRooms,
+} from "@/lib/home/rooms"
 import type { RoomCardData } from "@/lib/home/types"
+import { createClient } from "@/lib/supabase/client"
 
 type FriendsContextValue = {
   friends: FriendshipRow[]
@@ -24,12 +38,12 @@ type FriendsContextValue = {
   isLoading: boolean
   friendsLiveRooms: RoomCardData[]
   filterFriends: (query: string) => FriendshipRow[]
-  lookupUsername: (username: string) => FriendLookupResult
-  acceptRequest: (id: string) => void
-  declineRequest: (id: string) => void
-  cancelRequest: (id: string) => void
-  sendRequest: (username: string) => boolean
-  removeFriend: (id: string) => void
+  lookupUsername: (username: string) => Promise<FriendLookupResult>
+  acceptRequest: (id: string) => Promise<void>
+  declineRequest: (id: string) => Promise<void>
+  cancelRequest: (id: string) => Promise<void>
+  sendRequest: (username: string) => Promise<boolean>
+  removeFriend: (id: string) => Promise<void>
 }
 
 const FriendsContext = createContext<FriendsContextValue | null>(null)
@@ -39,15 +53,107 @@ type FriendsProviderProps = {
 }
 
 export const FriendsProvider = ({ children }: FriendsProviderProps) => {
-  const { notify, removeInboxByFriendUsername } = useNotifications()
+  const { notify, upsertFriendRequestInbox, removeInboxByFriendUsername } =
+    useNotifications()
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [friends, setFriends] = useState<FriendshipRow[]>([])
   const [incoming, setIncoming] = useState<FriendshipRow[]>([])
   const [outgoing, setOutgoing] = useState<FriendshipRow[]>([])
+  const [friendsLiveRooms, setFriendsLiveRooms] = useState<RoomCardData[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const knownIncomingRef = useRef<Set<string>>(new Set())
 
-  const isLoading = false
+  const syncInboxFromIncoming = useCallback(
+    (rows: FriendshipRow[]) => {
+      const nextIds = new Set(rows.map((row) => row.id))
+      for (const row of rows) {
+        if (!knownIncomingRef.current.has(row.id)) {
+          upsertFriendRequestInbox(row.otherUser.username)
+        }
+      }
+      knownIncomingRef.current = nextIds
+    },
+    [upsertFriendRequestInbox]
+  )
+
+  const refresh = useCallback(async (userId: string) => {
+    const snapshot = await fetchFriendships(userId)
+    const liveRooms = await fetchFriendsLiveRooms(
+      snapshot.friends.map((row) => row.otherUser)
+    )
+    const liveByFriend = buildLiveRoomByFriendId(liveRooms)
+
+    setFriends(
+      snapshot.friends.map((row) => ({
+        ...row,
+        liveRoomUid: liveByFriend.get(row.otherUser.id) ?? null,
+      }))
+    )
+    setIncoming(snapshot.incoming)
+    setOutgoing(snapshot.outgoing)
+    setFriendsLiveRooms(liveRooms)
+    syncInboxFromIncoming(snapshot.incoming)
+  }, [syncInboxFromIncoming])
+
+  useEffect(() => {
+    let cancelled = false
+    const supabase = createClient()
+
+    const bootstrap = async () => {
+      setIsLoading(true)
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (cancelled) return
+
+      if (!user) {
+        setCurrentUserId(null)
+        setFriends([])
+        setIncoming([])
+        setOutgoing([])
+        setFriendsLiveRooms([])
+        setIsLoading(false)
+        return
+      }
+
+      setCurrentUserId(user.id)
+      await refresh(user.id)
+      if (!cancelled) setIsLoading(false)
+    }
+
+    void bootstrap()
+
+    return () => {
+      cancelled = true
+    }
+  }, [refresh])
+
+  useEffect(() => {
+    if (!currentUserId) return
+
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`friendships:${currentUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "friendships",
+        },
+        () => {
+          void refresh(currentUserId)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [currentUserId, refresh])
+
   const incomingCount = incoming.length
-
-  const friendsLiveRooms = useMemo<RoomCardData[]>(() => [], [])
 
   const filterFriends = useCallback(
     (query: string) => {
@@ -61,88 +167,115 @@ export const FriendsProvider = ({ children }: FriendsProviderProps) => {
   )
 
   const lookupUsername = useCallback(
-    (username: string): FriendLookupResult => {
-      const normalized = username.trim().toLowerCase()
-      if (!normalized) {
+    async (username: string): Promise<FriendLookupResult> => {
+      if (!currentUserId) {
         return { ok: false, error: "not_found" }
       }
-
-      return { ok: false, error: "not_found" }
+      return lookupUsernameApi(username, currentUserId)
     },
-    []
+    [currentUserId]
   )
 
   const acceptRequest = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const row = incoming.find((item) => item.id === id)
-      if (!row) return
+      if (!row || !currentUserId) return
 
-      setIncoming((prev) => prev.filter((item) => item.id !== id))
-      setFriends((prev) => [
-        {
-          ...row,
-          status: "accepted",
-          liveRoomUid: null,
-        },
-        ...prev,
-      ])
+      const result = await acceptFriendRequest(id)
+      if (!result.ok) {
+        notify(result.error)
+        return
+      }
+
       removeInboxByFriendUsername(row.otherUser.username)
       notify(`You and ${row.otherUser.username} are now friends`)
+      await refresh(currentUserId)
     },
-    [incoming, notify, removeInboxByFriendUsername]
+    [
+      currentUserId,
+      incoming,
+      notify,
+      refresh,
+      removeInboxByFriendUsername,
+    ]
   )
 
   const declineRequest = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const row = incoming.find((item) => item.id === id)
-      if (!row) return
+      if (!row || !currentUserId) return
 
-      setIncoming((prev) => prev.filter((item) => item.id !== id))
+      const result = await deleteFriendship(id)
+      if (!result.ok) {
+        notify(result.error)
+        return
+      }
+
       removeInboxByFriendUsername(row.otherUser.username)
       notify(`Declined ${row.otherUser.username}'s friend request`)
+      await refresh(currentUserId)
     },
-    [incoming, notify, removeInboxByFriendUsername]
+    [
+      currentUserId,
+      incoming,
+      notify,
+      refresh,
+      removeInboxByFriendUsername,
+    ]
   )
 
   const cancelRequest = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const row = outgoing.find((item) => item.id === id)
-      if (!row) return
+      if (!row || !currentUserId) return
 
-      setOutgoing((prev) => prev.filter((item) => item.id !== id))
+      const result = await deleteFriendship(id)
+      if (!result.ok) {
+        notify(result.error)
+        return
+      }
+
       notify(`Cancelled request to ${row.otherUser.username}`)
+      await refresh(currentUserId)
     },
-    [notify, outgoing]
+    [currentUserId, notify, outgoing, refresh]
   )
 
   const sendRequest = useCallback(
-    (username: string) => {
-      const result = lookupUsername(username)
+    async (username: string) => {
+      if (!currentUserId) return false
+
+      const result = await lookupUsernameApi(username, currentUserId)
       if (!result.ok || result.relation !== "none") return false
 
-      const newRow: FriendshipRow = {
-        id: `fs-out-${result.user.id}-${Date.now()}`,
-        status: "pending_outgoing",
-        otherUser: result.user,
-        liveRoomUid: null,
-        createdAt: new Date().toISOString(),
+      const mutation = await sendFriendRequest(result.user.id, currentUserId)
+      if (!mutation.ok) {
+        notify(mutation.error)
+        return false
       }
-      setOutgoing((prev) => [newRow, ...prev])
+
       notify(`Friend request sent to ${result.user.username}`)
+      await refresh(currentUserId)
       return true
     },
-    [lookupUsername, notify]
+    [currentUserId, notify, refresh]
   )
 
   const removeFriend = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const row = friends.find((item) => item.id === id)
-      if (!row) return
+      if (!row || !currentUserId) return
 
-      setFriends((prev) => prev.filter((item) => item.id !== id))
+      const result = await deleteFriendship(id)
+      if (!result.ok) {
+        notify(result.error)
+        return
+      }
+
       notify(`Removed ${row.otherUser.username} from your friends`)
+      await refresh(currentUserId)
     },
-    [friends, notify]
+    [currentUserId, friends, notify, refresh]
   )
 
   const value = useMemo(
