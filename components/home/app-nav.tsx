@@ -3,7 +3,7 @@
 import type { LucideIcon } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { LogOutIcon, SettingsIcon, UserIcon } from "lucide-react"
+import { DoorOpenIcon, LogOutIcon, SettingsIcon, UserIcon } from "lucide-react"
 
 import { NotificationBell } from "@/components/notifications/notification-bell"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -33,6 +33,7 @@ type AccountMenuLink = {
 
 const accountMenuLinks: AccountMenuLink[] = [
   { label: "Friends", href: "/friends", icon: UserIcon },
+  { label: "My rooms", href: "/rooms", icon: DoorOpenIcon },
   { label: "Settings", href: "/settings", icon: SettingsIcon },
 ]
 

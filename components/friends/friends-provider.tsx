@@ -134,13 +134,24 @@ export const FriendsProvider = ({ children }: FriendsProviderProps) => {
 
     const supabase = createClient()
     const channel = supabase
-      .channel(`friendships:${currentUserId}`)
+      .channel(`friends-feed:${currentUserId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "friendships",
+        },
+        () => {
+          void refresh(currentUserId)
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "rooms",
         },
         () => {
           void refresh(currentUserId)

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { DoorOpenIcon, PlusIcon, UsersIcon } from "lucide-react"
 
 import { useFriends } from "@/components/friends/friends-provider"
@@ -196,12 +197,23 @@ export const HomePageShell = ({
       </section>
 
       <section aria-labelledby="recent-rooms-heading">
-        <h2
-          id="recent-rooms-heading"
-          className="font-serif mb-4 text-xl text-[#f3eadc]"
-        >
-          Your recent rooms
-        </h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2
+            id="recent-rooms-heading"
+            className="font-serif text-xl text-[#f3eadc]"
+          >
+            Your recent rooms
+          </h2>
+          <Button
+            type="button"
+            variant="ghost"
+            className="text-[#f3eadc]/70 hover:bg-white/5 hover:text-[#f3eadc]"
+            render={<Link href="/rooms" />}
+            aria-label="Manage your rooms"
+          >
+            Manage
+          </Button>
+        </div>
 
         {isLoading ? (
           <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-4">
