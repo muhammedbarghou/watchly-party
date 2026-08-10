@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Watchly
 
-## Getting Started
+Real-time watch-party platform. Create a room, drop in a video link, and watch together in sync — with text chat, voice chat, and a Twitch-style layout (player, chat sidebar, participant list).
 
-First, run the development server:
+## Stack
+
+| Layer | Choice |
+| --- | --- |
+| Frontend | Next.js (App Router) + TypeScript |
+| Hosting | Vercel |
+| Auth & data | Supabase Auth + Postgres |
+| Realtime | Self-hosted Node/Express + Socket.io |
+| Voice | WebRTC (peer-to-peer mesh) |
+| Video | `react-player` (YouTube, Vimeo, direct URL) |
+| UI | Tailwind CSS + shadcn/ui |
+
+## Features
+
+- Create rooms and join via invite link
+- Synced playback across all viewers (server-authoritative)
+- Ephemeral text chat
+- Peer-to-peer voice chat (small rooms, ~2–8 people)
+- Admin controls: playback, kick, mute, ban, admin transfer
+
+## Prerequisites
+
+- Node.js 20+
+- A [Supabase](https://supabase.com) project
+- The Watchly realtime Socket.io server running locally or on a VPS (`NEXT_PUBLIC_SOCKET_URL`)
+
+## Getting started
+
+```bash
+git clone https://github.com/muhammedbarghou/watchly-party.git
+cd watchly-party
+npm install
+cp .env.example .env.local
+```
+
+Fill in `.env.local`:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+NEXT_PUBLIC_SOCKET_URL=http://localhost:4000
+
+# Server-only — required for Settings → Delete account
+SUPABASE_SECRET_KEY=
+```
+
+Then start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/(landing)/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start Next.js in development |
+| `npm run build` | Production build |
+| `npm start` | Run the production build |
+| `npm run lint` | Run ESLint |
 
-## Learn More
+## Project layout
 
-To learn more about Next.js, take a look at the following resources:
+```
+app/           # Next.js App Router pages & API routes
+components/    # UI and feature components
+lib/           # Supabase clients, socket helpers, utilities
+supabase/      # Migrations / local Supabase config
+docs/          # Auth setup, privacy, terms
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Out of scope (v1)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- File upload as a video source
+- Large rooms / SFU media server
+- Native mobile apps
+- Persistent chat history
 
-## Deploy on Vercel
+## License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Private — all rights reserved.
