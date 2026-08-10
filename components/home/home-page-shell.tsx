@@ -8,6 +8,7 @@ import { useFriends } from "@/components/friends/friends-provider"
 import { CreateRoomDialog } from "@/components/home/create-room-dialog"
 import { JoinRoomDialog } from "@/components/home/join-room-dialog"
 import { RoomCard, RoomCardSkeleton } from "@/components/home/room-card"
+import { useAppSocket } from "@/components/notifications/app-socket-provider"
 import { useNotifications } from "@/components/notifications/notification-provider"
 import { usePreferences } from "@/components/settings/preferences-provider"
 import { Badge } from "@/components/ui/badge"
@@ -37,6 +38,7 @@ export const HomePageShell = ({
   currentUser,
 }: HomePageShellProps) => {
   const { notify } = useNotifications()
+  const { emit } = useAppSocket()
   const { preferences } = usePreferences()
   const { friendsLiveRooms, isLoading: isFriendsLoading } = useFriends()
   const [isLoading, setIsLoading] = useState(true)
@@ -50,6 +52,7 @@ export const HomePageShell = ({
     null
   )
   const [requestRoom, setRequestRoom] = useState<RoomCardData | null>(null)
+  const [isRequesting, setIsRequesting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -87,6 +90,13 @@ export const HomePageShell = ({
 
   const handleConfirmRequest = () => {
     if (!requestRoom) return
+    setIsRequesting(true)
+    const ok = emit("request_access", { roomUid: requestRoom.uid })
+    setIsRequesting(false)
+    if (!ok) {
+      notify("Not connected — try again in a moment.")
+      return
+    }
     setRequestedRoomIds((prev) => new Set(prev).add(requestRoom.id))
     notify("Access request sent")
     setRequestRoom(null)
@@ -290,8 +300,9 @@ export const HomePageShell = ({
               type="button"
               className="bg-amber-flame text-ink-black hover:bg-[#e5a500]"
               onClick={handleConfirmRequest}
+              disabled={isRequesting}
             >
-              Send request
+              {isRequesting ? "Sending…" : "Send request"}
             </Button>
           </DialogFooter>
         </DialogContent>

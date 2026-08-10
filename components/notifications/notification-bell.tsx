@@ -3,70 +3,23 @@
 import { useEffect, useState, type ComponentProps } from "react"
 import { BellIcon } from "lucide-react"
 
+import { NotificationsBlock } from "@/components/notifications/notifications-block"
 import { useNotifications } from "@/components/notifications/notification-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Popover,
   PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover"
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
-
-const formatRelativeTime = (iso: string): string => {
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const minutes = Math.max(1, Math.floor(diffMs / 60_000))
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
-const NotificationList = ({ className }: { className?: string }) => {
-  const { inbox } = useNotifications()
-
-  if (inbox.length === 0) {
-    return (
-      <p className={cn("px-1 py-6 text-center text-sm text-[#f3eadc]/55", className)}>
-        No notifications yet.
-      </p>
-    )
-  }
-
-  return (
-    <ul className={cn("flex max-h-80 flex-col gap-1 overflow-y-auto", className)}>
-      {inbox.map((item) => (
-        <li
-          key={item.id}
-          className={cn(
-            "rounded-lg px-3 py-2.5",
-            item.read ? "bg-transparent" : "bg-amber-flame/10"
-          )}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-medium text-[#f3eadc]">{item.title}</p>
-            <span className="shrink-0 text-[11px] text-[#f3eadc]/45">
-              {formatRelativeTime(item.createdAt)}
-            </span>
-          </div>
-          <p className="mt-0.5 text-xs text-[#f3eadc]/65">{item.body}</p>
-        </li>
-      ))}
-    </ul>
-  )
-}
 
 const BellButton = ({
   unreadCount,
@@ -100,8 +53,12 @@ const BellButton = ({
   </Button>
 )
 
-export const NotificationBell = () => {
-  const { unreadCount, markAllRead } = useNotifications()
+type NotificationBellProps = {
+  className?: string
+}
+
+export const NotificationBell = ({ className }: NotificationBellProps) => {
+  const { unreadCount } = useNotifications()
   const [isDesktopOpen, setIsDesktopOpen] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
   const [isNarrow, setIsNarrow] = useState(false)
@@ -114,52 +71,39 @@ export const NotificationBell = () => {
     return () => media.removeEventListener("change", handleChange)
   }, [])
 
-  const handleDesktopOpenChange = (open: boolean) => {
-    setIsDesktopOpen(open)
-    if (open) markAllRead()
-  }
-
-  const handleMobileOpenChange = (open: boolean) => {
-    setIsMobileOpen(open)
-    if (open) markAllRead()
-  }
-
   if (isNarrow) {
     return (
-      <Sheet open={isMobileOpen} onOpenChange={handleMobileOpenChange}>
+      <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
         <SheetTrigger
-          render={<BellButton unreadCount={unreadCount} />}
+          render={
+            <BellButton unreadCount={unreadCount} className={className} />
+          }
         />
         <SheetContent
           side="right"
-          className="border-night-bordeaux/50 bg-ink-black text-[#f3eadc]"
+          className="border-night-bordeaux/50 bg-ink-black text-[#f3eadc] sm:max-w-md"
         >
-          <SheetHeader>
-            <SheetTitle className="text-[#f3eadc]">Notifications</SheetTitle>
-            <SheetDescription className="text-[#f3eadc]/55">
-              Friend requests, invites, and access requests.
-            </SheetDescription>
+          <SheetHeader className="sr-only">
+            <SheetTitle>Notifications</SheetTitle>
           </SheetHeader>
-          <NotificationList className="mt-4 px-4" />
+          <div className="mt-2 px-1">
+            <NotificationsBlock />
+          </div>
         </SheetContent>
       </Sheet>
     )
   }
 
   return (
-    <Popover open={isDesktopOpen} onOpenChange={handleDesktopOpenChange}>
-      <PopoverTrigger render={<BellButton unreadCount={unreadCount} />} />
+    <Popover open={isDesktopOpen} onOpenChange={setIsDesktopOpen}>
+      <PopoverTrigger
+        render={<BellButton unreadCount={unreadCount} className={className} />}
+      />
       <PopoverContent
         align="end"
-        className="w-80 border-night-bordeaux/50 bg-ink-black p-3 text-[#f3eadc] shadow-xl ring-night-bordeaux/40"
+        className="w-[min(100vw-2rem,24rem)] border-night-bordeaux/50 bg-ink-black p-3 text-[#f3eadc] shadow-xl ring-night-bordeaux/40"
       >
-        <PopoverHeader className="mb-2 px-1">
-          <PopoverTitle className="text-[#f3eadc]">Notifications</PopoverTitle>
-          <PopoverDescription className="text-[#f3eadc]/55">
-            Friend requests, invites, and access requests.
-          </PopoverDescription>
-        </PopoverHeader>
-        <NotificationList />
+        <NotificationsBlock />
       </PopoverContent>
     </Popover>
   )

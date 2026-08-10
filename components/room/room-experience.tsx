@@ -55,7 +55,7 @@ export const RoomExperience = ({
   joinVoiceMuted = false,
 }: RoomExperienceProps) => {
   const router = useRouter()
-  const { notify } = useNotifications()
+  const { notify, pushInboxNotification } = useNotifications()
   const {
     status,
     errorMessage,
@@ -65,9 +65,11 @@ export const RoomExperience = ({
     messages,
     playback,
     removalReason,
+    pendingAccessRequests,
     socket,
     emit,
     leave,
+    clearPendingAccess,
   } = useRoomSocket({ roomUid, currentUser })
 
   const selfParticipant = participants.find((p) => p.id === currentUser.id)
@@ -98,6 +100,21 @@ export const RoomExperience = ({
     emit("self_mute", { muted: true })
     appliedJoinMute.current = true
   }, [joinVoiceMuted, status, selfParticipant, emit])
+
+  useEffect(() => {
+    for (const request of pendingAccessRequests) {
+      pushInboxNotification({
+        id: `access-${roomUid}-${request.userId}`,
+        type: "access_request",
+        title: "Access request",
+        body: `${request.username} wants to join this room`,
+        actorUsername: request.username,
+        actorAvatarUrl: request.avatarUrl,
+        roomUid,
+        fromUserId: request.userId,
+      })
+    }
+  }, [pendingAccessRequests, pushInboxNotification, roomUid])
 
   useEffect(() => {
     if (!roomState) return
@@ -231,10 +248,15 @@ export const RoomExperience = ({
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-ink-black text-[#f3eadc]">
       <RoomTopBar
+        roomUid={roomUid}
         roomName={roomState.name}
         participantCount={participants.length}
         isAdmin={isAdmin}
+        participants={participants}
+        pendingAccessRequests={pendingAccessRequests}
         onLeave={handleLeave}
+        emit={emit}
+        onClearPendingAccess={clearPendingAccess}
       />
 
       <div className="flex min-h-0 flex-1 flex-col sm:flex-row">

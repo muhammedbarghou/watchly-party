@@ -58,6 +58,10 @@ export type ClientToServerEvents = {
   ban_user: { targetUserId: string }
   transfer_admin: { targetUserId: string }
   self_mute: { muted: boolean }
+  request_access: { roomUid: string }
+  approve_access: { roomUid: string; targetUserId: string }
+  deny_access: { roomUid: string; targetUserId: string }
+  invite_to_room: { roomUid: string; targetUserId: string }
   rtc_offer: { targetUserId: string; payload: RTCSessionDescriptionInit }
   rtc_answer: { targetUserId: string; payload: RTCSessionDescriptionInit }
   rtc_ice_candidate: { targetUserId: string; payload: RTCIceCandidateInit }
@@ -79,6 +83,21 @@ export type ServerToClientEvents = {
   user_banned: { userId: string }
   user_muted: { userId: string; muted: boolean; byAdmin?: boolean }
   admin_changed: { newAdminId: string }
+  access_requested: {
+    userId: string
+    username?: string
+    avatarUrl?: string | null
+    roomUid: string
+  }
+  access_approved: { roomUid: string }
+  access_denied: { roomUid: string }
+  room_invited: {
+    roomUid: string
+    roomName?: string | null
+    fromUserId: string
+    fromUsername?: string
+    fromAvatarUrl?: string | null
+  }
   rtc_offer: { fromUserId: string; payload: RTCSessionDescriptionInit }
   rtc_answer: { fromUserId: string; payload: RTCSessionDescriptionInit }
   rtc_ice_candidate: { fromUserId: string; payload: RTCIceCandidateInit }

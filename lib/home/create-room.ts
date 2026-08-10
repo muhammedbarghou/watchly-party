@@ -118,7 +118,7 @@ export const createRoomAction = async (
         avatarUrl: profile.avatar_url,
       },
       participantCount: 1,
-      requiresApproval: false,
+      requiresApproval: Boolean(input.isPrivate),
       isPrivate: Boolean(data.is_private),
       visibleToFriends: Boolean(data.visible_to_friends),
       createdAt: data.created_at ?? new Date().toISOString(),

@@ -32,6 +32,11 @@ export type InboxNotification = {
   body: string
   createdAt: string
   read: boolean
+  actorUsername?: string
+  actorAvatarUrl?: string | null
+  friendshipId?: string
+  roomUid?: string
+  fromUserId?: string
 }
 
 export type TransientNotification = {

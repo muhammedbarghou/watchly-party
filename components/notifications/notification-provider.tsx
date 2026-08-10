@@ -16,20 +16,37 @@ import type {
   TransientNotification,
 } from "@/lib/home/types"
 
+export type PushInboxInput = {
+  type: InboxNotificationType
+  title: string
+  body: string
+  id?: string
+  actorUsername?: string
+  actorAvatarUrl?: string | null
+  friendshipId?: string
+  roomUid?: string
+  fromUserId?: string
+}
+
+export type FriendRequestInboxInput = {
+  friendshipId: string
+  username: string
+  avatarUrl?: string | null
+}
+
 type NotificationContextValue = {
   inbox: InboxNotification[]
   unreadCount: number
   toasts: TransientNotification[]
   notify: (message: string) => void
   markAllRead: () => void
+  markRead: (id: string) => void
   dismissToast: (id: string) => void
-  upsertFriendRequestInbox: (username: string) => void
+  removeInboxById: (id: string) => void
+  upsertFriendRequestInbox: (input: FriendRequestInboxInput) => void
+  removeInboxByFriendshipId: (friendshipId: string) => void
   removeInboxByFriendUsername: (username: string) => void
-  pushInboxNotification: (notification: {
-    type: InboxNotificationType
-    title: string
-    body: string
-  }) => void
+  pushInboxNotification: (notification: PushInboxInput) => void
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(
@@ -100,51 +117,141 @@ export const NotificationProvider = ({
     setInbox((prev) => prev.map((item) => ({ ...item, read: true })))
   }, [])
 
+  const markRead = useCallback((id: string) => {
+    setInbox((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, read: true } : item))
+    )
+  }, [])
+
+  const removeInboxById = useCallback((id: string) => {
+    setInbox((prev) => prev.filter((item) => item.id !== id))
+  }, [])
+
   const pushInboxNotification = useCallback(
-    (notification: {
-      type: InboxNotificationType
-      title: string
-      body: string
-    }) => {
+    (notification: PushInboxInput) => {
       if (!isInboxTypeEnabled(notification.type)) return
 
-      setInbox((prev) => [
-        {
-          id: `notif-${notification.type}-${Date.now()}`,
-          type: notification.type,
-          title: notification.title,
-          body: notification.body,
-          createdAt: new Date().toISOString(),
-          read: false,
-        },
-        ...prev,
-      ])
+      const id =
+        notification.id ??
+        `notif-${notification.type}-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 7)}`
+
+      setInbox((prev) => {
+        const existingIndex = prev.findIndex((item) => item.id === id)
+        if (existingIndex >= 0) {
+          return prev.map((item, index) =>
+            index === existingIndex
+              ? {
+                  ...item,
+                  ...notification,
+                  id,
+                  read: false,
+                  createdAt: item.createdAt,
+                }
+              : item
+          )
+        }
+
+        // Dedupe access requests / invites by room + actor
+        if (
+          notification.type === "access_request" &&
+          notification.roomUid &&
+          notification.fromUserId
+        ) {
+          const dup = prev.find(
+            (item) =>
+              item.type === "access_request" &&
+              item.roomUid === notification.roomUid &&
+              item.fromUserId === notification.fromUserId
+          )
+          if (dup) {
+            return prev.map((item) =>
+              item.id === dup.id
+                ? { ...item, ...notification, id: dup.id, read: false }
+                : item
+            )
+          }
+        }
+
+        if (
+          notification.type === "room_invite" &&
+          notification.roomUid &&
+          notification.fromUserId
+        ) {
+          const dup = prev.find(
+            (item) =>
+              item.type === "room_invite" &&
+              item.roomUid === notification.roomUid &&
+              item.fromUserId === notification.fromUserId
+          )
+          if (dup) {
+            return prev.map((item) =>
+              item.id === dup.id
+                ? { ...item, ...notification, id: dup.id, read: false }
+                : item
+            )
+          }
+        }
+
+        return [
+          {
+            id,
+            type: notification.type,
+            title: notification.title,
+            body: notification.body,
+            createdAt: new Date().toISOString(),
+            read: false,
+            actorUsername: notification.actorUsername,
+            actorAvatarUrl: notification.actorAvatarUrl,
+            friendshipId: notification.friendshipId,
+            roomUid: notification.roomUid,
+            fromUserId: notification.fromUserId,
+          },
+          ...prev,
+        ]
+      })
     },
     [isInboxTypeEnabled]
   )
 
   const upsertFriendRequestInbox = useCallback(
-    (username: string) => {
+    (input: FriendRequestInboxInput) => {
       if (!preferences.notifyFriendRequest) return
 
-      const body = friendRequestBody(username)
+      const body = friendRequestBody(input.username)
       setInbox((prev) => {
         const existing = prev.find(
-          (item) => item.type === "friend_request" && item.body === body
+          (item) =>
+            item.type === "friend_request" &&
+            (item.friendshipId === input.friendshipId ||
+              item.actorUsername === input.username)
         )
         if (existing) {
           return prev.map((item) =>
-            item.id === existing.id ? { ...item, read: false } : item
+            item.id === existing.id
+              ? {
+                  ...item,
+                  friendshipId: input.friendshipId,
+                  actorUsername: input.username,
+                  actorAvatarUrl: input.avatarUrl ?? item.actorAvatarUrl,
+                  body,
+                  read: false,
+                }
+              : item
           )
         }
         return [
           {
-            id: `notif-fr-${username}-${Date.now()}`,
+            id: `notif-fr-${input.friendshipId}`,
             type: "friend_request" as const,
             title: "Friend request",
             body,
             createdAt: new Date().toISOString(),
             read: false,
+            actorUsername: input.username,
+            actorAvatarUrl: input.avatarUrl ?? null,
+            friendshipId: input.friendshipId,
           },
           ...prev,
         ]
@@ -153,11 +260,27 @@ export const NotificationProvider = ({
     [preferences.notifyFriendRequest]
   )
 
-  const removeInboxByFriendUsername = useCallback((username: string) => {
-    const body = friendRequestBody(username)
+  const removeInboxByFriendshipId = useCallback((friendshipId: string) => {
     setInbox((prev) =>
       prev.filter(
-        (item) => !(item.type === "friend_request" && item.body === body)
+        (item) =>
+          !(
+            item.type === "friend_request" &&
+            item.friendshipId === friendshipId
+          )
+      )
+    )
+  }, [])
+
+  const removeInboxByFriendUsername = useCallback((username: string) => {
+    setInbox((prev) =>
+      prev.filter(
+        (item) =>
+          !(
+            item.type === "friend_request" &&
+            (item.actorUsername === username ||
+              item.body === friendRequestBody(username))
+          )
       )
     )
   }, [])
@@ -169,8 +292,11 @@ export const NotificationProvider = ({
       toasts,
       notify,
       markAllRead,
+      markRead,
       dismissToast,
+      removeInboxById,
       upsertFriendRequestInbox,
+      removeInboxByFriendshipId,
       removeInboxByFriendUsername,
       pushInboxNotification,
     }),
@@ -180,8 +306,11 @@ export const NotificationProvider = ({
       toasts,
       notify,
       markAllRead,
+      markRead,
       dismissToast,
+      removeInboxById,
       upsertFriendRequestInbox,
+      removeInboxByFriendshipId,
       removeInboxByFriendUsername,
       pushInboxNotification,
     ]

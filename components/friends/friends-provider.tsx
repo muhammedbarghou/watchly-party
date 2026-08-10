@@ -53,8 +53,12 @@ type FriendsProviderProps = {
 }
 
 export const FriendsProvider = ({ children }: FriendsProviderProps) => {
-  const { notify, upsertFriendRequestInbox, removeInboxByFriendUsername } =
-    useNotifications()
+  const {
+    notify,
+    upsertFriendRequestInbox,
+    removeInboxByFriendshipId,
+    removeInboxByFriendUsername,
+  } = useNotifications()
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [friends, setFriends] = useState<FriendshipRow[]>([])
   const [incoming, setIncoming] = useState<FriendshipRow[]>([])
@@ -68,12 +72,21 @@ export const FriendsProvider = ({ children }: FriendsProviderProps) => {
       const nextIds = new Set(rows.map((row) => row.id))
       for (const row of rows) {
         if (!knownIncomingRef.current.has(row.id)) {
-          upsertFriendRequestInbox(row.otherUser.username)
+          upsertFriendRequestInbox({
+            friendshipId: row.id,
+            username: row.otherUser.username,
+            avatarUrl: row.otherUser.avatarUrl,
+          })
+        }
+      }
+      for (const knownId of knownIncomingRef.current) {
+        if (!nextIds.has(knownId)) {
+          removeInboxByFriendshipId(knownId)
         }
       }
       knownIncomingRef.current = nextIds
     },
-    [upsertFriendRequestInbox]
+    [removeInboxByFriendshipId, upsertFriendRequestInbox]
   )
 
   const refresh = useCallback(async (userId: string) => {
@@ -198,6 +211,7 @@ export const FriendsProvider = ({ children }: FriendsProviderProps) => {
         return
       }
 
+      removeInboxByFriendshipId(row.id)
       removeInboxByFriendUsername(row.otherUser.username)
       notify(`You and ${row.otherUser.username} are now friends`)
       await refresh(currentUserId)
@@ -207,6 +221,7 @@ export const FriendsProvider = ({ children }: FriendsProviderProps) => {
       incoming,
       notify,
       refresh,
+      removeInboxByFriendshipId,
       removeInboxByFriendUsername,
     ]
   )
@@ -222,6 +237,7 @@ export const FriendsProvider = ({ children }: FriendsProviderProps) => {
         return
       }
 
+      removeInboxByFriendshipId(row.id)
       removeInboxByFriendUsername(row.otherUser.username)
       notify(`Declined ${row.otherUser.username}'s friend request`)
       await refresh(currentUserId)
@@ -231,6 +247,7 @@ export const FriendsProvider = ({ children }: FriendsProviderProps) => {
       incoming,
       notify,
       refresh,
+      removeInboxByFriendshipId,
       removeInboxByFriendUsername,
     ]
   )

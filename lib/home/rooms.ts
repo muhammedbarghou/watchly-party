@@ -95,7 +95,7 @@ const mapRoomCard = (row: RecentRoomRow, host: RoomHost): RoomCardData => ({
     avatarUrl: host.avatarUrl,
   },
   participantCount: 0,
-  requiresApproval: false,
+  requiresApproval: Boolean(row.is_private),
   isPrivate: Boolean(row.is_private),
   visibleToFriends: Boolean(row.visible_to_friends),
   createdAt: row.created_at ?? new Date().toISOString(),
