@@ -63,24 +63,39 @@ type RecentRoomRow = {
   is_private: boolean | null
   visible_to_friends: boolean | null
   created_at: string | null
+  closed_at?: string | null
   created_by: string
 }
 
 const DEFAULT_POSTER =
   "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=640&h=360&fit=crop"
 
+const RECENT_ROOMS_SELECT =
+  "id, uid, name, status, video_url, is_private, visible_to_friends, created_at, closed_at, created_by"
+
+const RECENT_ROOMS_SELECT_LEGACY =
+  "id, uid, name, status, video_url, is_private, visible_to_friends, created_at, created_by"
+
 export const fetchMyRecentRooms = async (
   host: { id: string; username: string; avatarUrl: string | null }
 ): Promise<RoomCardData[]> => {
   const supabase = createClient()
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("rooms")
-    .select(
-      "id, uid, name, status, video_url, is_private, visible_to_friends, created_at, created_by"
-    )
+    .select(RECENT_ROOMS_SELECT)
     .eq("created_by", host.id)
     .order("created_at", { ascending: false })
     .limit(24)
+
+  // closed_at may not exist until the rooms_closed_at migration is applied.
+  if (error?.code === "42703") {
+    ;({ data, error } = await supabase
+      .from("rooms")
+      .select(RECENT_ROOMS_SELECT_LEGACY)
+      .eq("created_by", host.id)
+      .order("created_at", { ascending: false })
+      .limit(24))
+  }
 
   if (error || !data) {
     return []
@@ -103,6 +118,6 @@ export const fetchMyRecentRooms = async (
     isPrivate: Boolean(row.is_private),
     visibleToFriends: Boolean(row.visible_to_friends),
     createdAt: row.created_at ?? new Date().toISOString(),
-    closedAt: row.status === "closed" ? (row.created_at ?? null) : null,
+    closedAt: row.status === "closed" ? (row.closed_at ?? null) : null,
   }))
 }

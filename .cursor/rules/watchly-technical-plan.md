@@ -133,7 +133,8 @@ CREATE TABLE rooms (
   visible_to_friends BOOLEAN DEFAULT TRUE,
   status TEXT CHECK (status IN ('active','closed')) DEFAULT 'active',
   max_participants INT DEFAULT 8,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  closed_at TIMESTAMPTZ  -- set when status becomes 'closed'; null while active
 );
 
 -- Optional: durable ban records, so bans survive a server restart
