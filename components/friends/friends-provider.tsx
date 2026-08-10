@@ -4,28 +4,17 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react"
 
 import { useNotifications } from "@/components/notifications/notification-provider"
-import {
-  findDirectoryUser,
-  friendsLiveRoomsFromAccepted,
-  INITIAL_ACCEPTED_FRIENDS,
-  INITIAL_INCOMING_REQUESTS,
-  INITIAL_OUTGOING_REQUESTS,
-  SELF_USERNAME,
-} from "@/lib/friends/fixtures"
 import type {
   FriendLookupResult,
   FriendshipRow,
 } from "@/lib/friends/types"
 import type { RoomCardData } from "@/lib/home/types"
-
-const LOAD_DELAY_MS = 650
 
 type FriendsContextValue = {
   friends: FriendshipRow[]
@@ -51,28 +40,14 @@ type FriendsProviderProps = {
 
 export const FriendsProvider = ({ children }: FriendsProviderProps) => {
   const { notify, removeInboxByFriendUsername } = useNotifications()
-  const [isLoading, setIsLoading] = useState(true)
-  const [friends, setFriends] = useState<FriendshipRow[]>(
-    INITIAL_ACCEPTED_FRIENDS
-  )
-  const [incoming, setIncoming] = useState<FriendshipRow[]>(
-    INITIAL_INCOMING_REQUESTS
-  )
-  const [outgoing, setOutgoing] = useState<FriendshipRow[]>(
-    INITIAL_OUTGOING_REQUESTS
-  )
+  const [friends, setFriends] = useState<FriendshipRow[]>([])
+  const [incoming, setIncoming] = useState<FriendshipRow[]>([])
+  const [outgoing, setOutgoing] = useState<FriendshipRow[]>([])
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setIsLoading(false), LOAD_DELAY_MS)
-    return () => window.clearTimeout(timer)
-  }, [])
-
+  const isLoading = false
   const incomingCount = incoming.length
 
-  const friendsLiveRooms = useMemo(
-    () => friendsLiveRoomsFromAccepted(friends),
-    [friends]
-  )
+  const friendsLiveRooms = useMemo<RoomCardData[]>(() => [], [])
 
   const filterFriends = useCallback(
     (query: string) => {
@@ -92,28 +67,9 @@ export const FriendsProvider = ({ children }: FriendsProviderProps) => {
         return { ok: false, error: "not_found" }
       }
 
-      if (normalized === SELF_USERNAME) {
-        return { ok: false, error: "self" }
-      }
-
-      const user = findDirectoryUser(normalized)
-      if (!user) {
-        return { ok: false, error: "not_found" }
-      }
-
-      if (friends.some((row) => row.otherUser.id === user.id)) {
-        return { ok: true, user, relation: "already_friends" }
-      }
-      if (outgoing.some((row) => row.otherUser.id === user.id)) {
-        return { ok: true, user, relation: "outgoing_pending" }
-      }
-      if (incoming.some((row) => row.otherUser.id === user.id)) {
-        return { ok: true, user, relation: "incoming_pending" }
-      }
-
-      return { ok: true, user, relation: "none" }
+      return { ok: false, error: "not_found" }
     },
-    [friends, incoming, outgoing]
+    []
   )
 
   const acceptRequest = useCallback(

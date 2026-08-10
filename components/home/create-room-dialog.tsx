@@ -24,7 +24,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { createRoomAction } from "@/lib/home/create-room"
-import { isValidHttpUrl } from "@/lib/home/fixtures"
+import { isValidHttpUrl } from "@/lib/home/url"
 import { stashRoomPassword } from "@/lib/room/password-store"
 import type { RoomCardData } from "@/lib/home/types"
 

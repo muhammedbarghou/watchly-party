@@ -10,8 +10,6 @@ export type RoomParticipant = {
   muted: boolean
   mutedByAdmin: boolean
   hasPlaybackControl: boolean
-  /** Mock-only: voice peer connection degraded */
-  connectionIssue?: boolean
 }
 
 export type PlaybackState = {
@@ -27,8 +25,6 @@ export type RoomState = {
   adminId: string
   participants: RoomParticipant[]
   playbackState: PlaybackState
-  requiresPassword?: boolean
-  password?: string
 }
 
 export type ChatMessage = {

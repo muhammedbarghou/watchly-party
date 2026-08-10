@@ -1,7 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { MicOffIcon, WifiOffIcon } from "lucide-react"
+import { MicOffIcon } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -21,24 +20,6 @@ export const RoomVoiceStrip = ({
   selfId,
   onToggleSelfMute,
 }: RoomVoiceStripProps) => {
-  const [speakingIds, setSpeakingIds] = useState<Set<string>>(new Set())
-
-  useEffect(() => {
-    const tick = () => {
-      const next = new Set<string>()
-      for (const p of participants) {
-        if (p.muted || p.connectionIssue) continue
-        if (Math.random() > 0.65) {
-          next.add(p.id)
-        }
-      }
-      setSpeakingIds(next)
-    }
-    tick()
-    const id = window.setInterval(tick, 900)
-    return () => window.clearInterval(id)
-  }, [participants])
-
   const self = participants.find((p) => p.id === selfId)
 
   return (
@@ -49,20 +30,12 @@ export const RoomVoiceStrip = ({
     >
       {participants.map((participant) => {
         const isSelf = participant.id === selfId
-        const speaking = speakingIds.has(participant.id)
         return (
           <div
             key={participant.id}
             className="relative flex shrink-0 flex-col items-center gap-1"
           >
-            <div
-              className={cn(
-                "rounded-full p-0.5 transition-shadow",
-                speaking
-                  ? "shadow-[0_0_0_2px_rgba(245,158,11,0.85)]"
-                  : "shadow-[0_0_0_2px_transparent]"
-              )}
-            >
+            <div className="rounded-full p-0.5 shadow-[0_0_0_2px_transparent]">
               <Avatar size="default" className="size-9">
                 {participant.avatarUrl ? (
                   <AvatarImage src={participant.avatarUrl} alt="" />
@@ -78,15 +51,6 @@ export const RoomVoiceStrip = ({
                 aria-label="Muted"
               >
                 <MicOffIcon className="size-3" aria-hidden />
-              </span>
-            ) : null}
-            {participant.connectionIssue ? (
-              <span
-                className="absolute -left-0.5 top-0 rounded-full bg-ink-black p-0.5 text-[#f3eadc]/70"
-                aria-label="Connection issue"
-                title="Connection issue"
-              >
-                <WifiOffIcon className="size-3" aria-hidden />
               </span>
             ) : null}
             <span className="max-w-14 truncate text-[10px] text-[#f3eadc]/60">

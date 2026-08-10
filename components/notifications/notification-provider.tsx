@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from "react"
 
-import { PENDING_NOTIFICATIONS } from "@/lib/home/fixtures"
 import type {
   InboxNotification,
   TransientNotification,
@@ -42,7 +41,7 @@ type NotificationProviderProps = {
 
 export const NotificationProvider = ({
   children,
-  initialInbox = PENDING_NOTIFICATIONS,
+  initialInbox = [],
 }: NotificationProviderProps) => {
   const [inbox, setInbox] = useState<InboxNotification[]>(initialInbox)
   const [toasts, setToasts] = useState<TransientNotification[]>([])
