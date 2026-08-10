@@ -80,28 +80,34 @@ export const fetchMyRecentRooms = async (
   host: { id: string; username: string; avatarUrl: string | null }
 ): Promise<RoomCardData[]> => {
   const supabase = createClient()
-  let { data, error } = await supabase
+  const primary = await supabase
     .from("rooms")
     .select(RECENT_ROOMS_SELECT)
     .eq("created_by", host.id)
     .order("created_at", { ascending: false })
     .limit(24)
 
+  let data: RecentRoomRow[] | null = primary.data as RecentRoomRow[] | null
+  let error = primary.error
+
   // closed_at may not exist until the rooms_closed_at migration is applied.
   if (error?.code === "42703") {
-    ;({ data, error } = await supabase
+    const legacy = await supabase
       .from("rooms")
       .select(RECENT_ROOMS_SELECT_LEGACY)
       .eq("created_by", host.id)
       .order("created_at", { ascending: false })
-      .limit(24))
+      .limit(24)
+
+    data = legacy.data as RecentRoomRow[] | null
+    error = legacy.error
   }
 
   if (error || !data) {
     return []
   }
 
-  return (data as RecentRoomRow[]).map((row) => ({
+  return data.map((row) => ({
     id: row.id,
     uid: row.uid,
     name: row.name,
