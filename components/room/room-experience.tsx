@@ -22,6 +22,7 @@ import type { CurrentUser } from "@/lib/room/types"
 type RoomExperienceProps = {
   roomUid: string
   currentUser: CurrentUser
+  joinVoiceMuted?: boolean
 }
 
 const titleForErrorCode = (code: string | null): string => {
@@ -51,6 +52,7 @@ const titleForErrorCode = (code: string | null): string => {
 export const RoomExperience = ({
   roomUid,
   currentUser,
+  joinVoiceMuted = false,
 }: RoomExperienceProps) => {
   const router = useRouter()
   const { notify } = useNotifications()
@@ -84,6 +86,18 @@ export const RoomExperience = ({
 
   const prevAdminId = useRef<string | null>(null)
   const notifiedMute = useRef(false)
+  const appliedJoinMute = useRef(false)
+
+  useEffect(() => {
+    if (!joinVoiceMuted || appliedJoinMute.current) return
+    if (status !== "joined" || !selfParticipant) return
+    if (selfParticipant.muted) {
+      appliedJoinMute.current = true
+      return
+    }
+    emit("self_mute", { muted: true })
+    appliedJoinMute.current = true
+  }, [joinVoiceMuted, status, selfParticipant, emit])
 
   useEffect(() => {
     if (!roomState) return

@@ -6,10 +6,13 @@ Copy `.env.example` to `.env.local` and set:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SECRET_KEY` (server-only) — required for **Settings → Delete account**. Use the project secret key (`sb_secret_…`) from Supabase → Project Settings → API. Legacy `SUPABASE_SERVICE_ROLE_KEY` is also accepted as a fallback.
+
+Never expose `SUPABASE_SECRET_KEY` / `SUPABASE_SERVICE_ROLE_KEY` with a `NEXT_PUBLIC_` prefix.
 
 ## Supabase Dashboard
 
-Project: **watchly** (``)
+Project: **watchly** (`hfrfpodvnnqfujpfxfjg`)
 
 ### Redirect URLs
 
@@ -31,3 +34,7 @@ Authentication → URL Configuration:
 5. Save
 
 Without this, email/password auth still works; Google buttons will fail until configured.
+
+### Avatars storage
+
+Settings uploads avatars to the public `avatars` bucket (created by migration `user_preferences_and_avatars`). Users may only write under `{user_id}/`.

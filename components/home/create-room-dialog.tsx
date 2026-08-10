@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2Icon } from "lucide-react"
 
@@ -32,6 +32,8 @@ type CreateRoomDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: (room: RoomCardData) => void
+  defaultIsPrivate?: boolean
+  defaultVisibleToFriends?: boolean
 }
 
 type CreateFormState = {
@@ -46,6 +48,8 @@ export const CreateRoomDialog = ({
   open,
   onOpenChange,
   onCreated,
+  defaultIsPrivate = false,
+  defaultVisibleToFriends = true,
 }: CreateRoomDialogProps) => {
   const router = useRouter()
   const { notify } = useNotifications()
@@ -53,21 +57,34 @@ export const CreateRoomDialog = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [formState, setFormState] = useState<CreateFormState>({
     name: "",
-    isPrivate: false,
+    isPrivate: defaultIsPrivate,
     password: "",
     videoUrl: "",
-    visibleToFriends: true,
+    visibleToFriends: defaultVisibleToFriends,
   })
+
+  useEffect(() => {
+    if (!open) return
+    setErrorMessage(null)
+    setIsSubmitting(false)
+    setFormState({
+      name: "",
+      isPrivate: defaultIsPrivate,
+      password: "",
+      videoUrl: "",
+      visibleToFriends: defaultVisibleToFriends,
+    })
+  }, [open, defaultIsPrivate, defaultVisibleToFriends])
 
   const resetForm = () => {
     setErrorMessage(null)
     setIsSubmitting(false)
     setFormState({
       name: "",
-      isPrivate: false,
+      isPrivate: defaultIsPrivate,
       password: "",
       videoUrl: "",
-      visibleToFriends: true,
+      visibleToFriends: defaultVisibleToFriends,
     })
   }
 

@@ -9,6 +9,7 @@ import { CreateRoomDialog } from "@/components/home/create-room-dialog"
 import { JoinRoomDialog } from "@/components/home/join-room-dialog"
 import { RoomCard, RoomCardSkeleton } from "@/components/home/room-card"
 import { useNotifications } from "@/components/notifications/notification-provider"
+import { usePreferences } from "@/components/settings/preferences-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -36,6 +37,7 @@ export const HomePageShell = ({
   currentUser,
 }: HomePageShellProps) => {
   const { notify } = useNotifications()
+  const { preferences } = usePreferences()
   const { friendsLiveRooms, isLoading: isFriendsLoading } = useFriends()
   const [isLoading, setIsLoading] = useState(true)
   const [recentRooms, setRecentRooms] = useState<RoomCardData[]>([])
@@ -252,6 +254,8 @@ export const HomePageShell = ({
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
         onCreated={handleCreated}
+        defaultIsPrivate={preferences.defaultRoomPrivate}
+        defaultVisibleToFriends={preferences.defaultVisibleToFriends}
       />
       <JoinRoomDialog open={isJoinOpen} onOpenChange={setIsJoinOpen} />
 
