@@ -2,13 +2,8 @@
 
 import { useEffect, useRef, useState } from "react"
 
-import { createMockRoomSocket } from "@/lib/room/mock-socket"
-import {
-  clearCreatedRoomMeta,
-  readCreatedRoomMeta,
-  readRoomPassword,
-} from "@/lib/room/password-store"
-import { registerDynamicRoom } from "@/lib/room/fixtures"
+import { messageForRoomError } from "@/lib/room/error-messages"
+import { readRoomPassword } from "@/lib/room/password-store"
 import type {
   ChatMessage,
   ClientEventName,
@@ -20,6 +15,7 @@ import type {
   RoomSocketStatus,
   RoomState,
 } from "@/lib/room/types"
+import { createRoomSocket, type RoomSocket } from "@/lib/socket"
 
 type UseRoomSocketOptions = {
   roomUid: string
@@ -29,6 +25,7 @@ type UseRoomSocketOptions = {
 type UseRoomSocketResult = {
   status: RoomSocketStatus
   errorMessage: string | null
+  errorCode: string | null
   roomState: RoomState | null
   participants: RoomParticipant[]
   messages: ChatMessage[]
@@ -47,61 +44,82 @@ export const useRoomSocket = ({
 }: UseRoomSocketOptions): UseRoomSocketResult => {
   const [status, setStatus] = useState<RoomSocketStatus>("connecting")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [errorCode, setErrorCode] = useState<string | null>(null)
   const [roomState, setRoomState] = useState<RoomState | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [removalReason, setRemovalReason] = useState<RemovalReason>(null)
-  const socketRef = useRef<ReturnType<typeof createMockRoomSocket> | null>(
-    null
-  )
+  const socketRef = useRef<RoomSocket | null>(null)
 
   const userId = currentUser.id
-  const username = currentUser.username
-  const avatarUrl = currentUser.avatarUrl
 
   useEffect(() => {
-    const user: CurrentUser = { id: userId, username, avatarUrl }
-    const created = readCreatedRoomMeta(roomUid)
-    if (created) {
-      registerDynamicRoom({
-        roomUid,
-        name: created.name,
-        videoUrl: created.videoUrl,
-        adminId: user.id,
-        requiresPassword: created.isPrivate,
-        password: created.password,
-        participants: [
-          {
-            id: user.id,
-            username: user.username,
-            avatarUrl: user.avatarUrl,
-            role: "admin",
-            muted: false,
-            mutedByAdmin: false,
-            hasPlaybackControl: true,
-          },
-        ],
-        playbackState: {
-          status: "paused",
-          positionMs: 0,
-          serverTime: Date.now(),
-        },
+    let cancelled = false
+
+    const connect = async () => {
+      setStatus("connecting")
+      setErrorMessage(null)
+      setErrorCode(null)
+      setRoomState(null)
+      setMessages([])
+      setRemovalReason(null)
+
+      let socket: RoomSocket
+      try {
+        socket = await createRoomSocket()
+      } catch (error) {
+        if (cancelled) return
+        setErrorCode("CONNECT_FAILED")
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Could not connect to the room server."
+        )
+        setStatus("error")
+        return
+      }
+
+      if (cancelled) {
+        socket.disconnect()
+        return
+      }
+
+      socketRef.current = socket
+
+      const handleConnect = () => {
+        const password = readRoomPassword(roomUid)
+        socket.emit("join_room", {
+          roomUid,
+          ...(password ? { password } : {}),
+        })
+      }
+
+      socket.on("connect", handleConnect)
+      if (socket.connected) {
+        handleConnect()
+      }
+
+      socket.on("connect_error", (err) => {
+        setErrorCode("AUTH_FAILED")
+        setErrorMessage(
+          err.message || "Could not authenticate with the room server."
+        )
+        setStatus("error")
       })
-      clearCreatedRoomMeta(roomUid)
-    }
 
-    const socket = createMockRoomSocket(user)
-    socketRef.current = socket
-
-    const unsubs = [
       socket.on("room_state", (state) => {
         setRoomState(state)
         setStatus("joined")
         setErrorMessage(null)
-      }),
+        setErrorCode(null)
+      })
+
       socket.on("error", (err) => {
-        setErrorMessage(err.message)
+        setErrorCode(err.code)
+        setErrorMessage(messageForRoomError(err.code, err.message))
         setStatus("error")
-      }),
+        socket.disconnect()
+      })
+
       socket.on("user_joined", ({ user: joined }) => {
         setRoomState((prev) => {
           if (!prev) return prev
@@ -111,7 +129,8 @@ export const useRoomSocket = ({
             participants: [...prev.participants, joined],
           }
         })
-      }),
+      })
+
       socket.on("user_left", ({ userId: leftId }) => {
         setRoomState((prev) => {
           if (!prev) return prev
@@ -120,10 +139,12 @@ export const useRoomSocket = ({
             participants: prev.participants.filter((p) => p.id !== leftId),
           }
         })
-      }),
+      })
+
       socket.on("chat_message", (message) => {
         setMessages((prev) => [...prev, message])
-      }),
+      })
+
       socket.on("playback_sync", (sync) => {
         setRoomState((prev) => {
           if (!prev) return prev
@@ -132,7 +153,8 @@ export const useRoomSocket = ({
             playbackState: { ...sync },
           }
         })
-      }),
+      })
+
       socket.on("playback_control_granted", ({ userId: targetId, granted }) => {
         setRoomState((prev) => {
           if (!prev) return prev
@@ -143,7 +165,8 @@ export const useRoomSocket = ({
             ),
           }
         })
-      }),
+      })
+
       socket.on("user_muted", ({ userId: targetId, muted, byAdmin }) => {
         setRoomState((prev) => {
           if (!prev) return prev
@@ -164,7 +187,8 @@ export const useRoomSocket = ({
             ),
           }
         })
-      }),
+      })
+
       socket.on("admin_changed", ({ newAdminId }) => {
         setRoomState((prev) => {
           if (!prev) return prev
@@ -186,9 +210,10 @@ export const useRoomSocket = ({
             }),
           }
         })
-      }),
+      })
+
       socket.on("user_kicked", ({ userId: targetId }) => {
-        if (targetId === user.id) {
+        if (targetId === userId) {
           setRemovalReason("kicked")
           setStatus("removed")
           socket.disconnect()
@@ -201,9 +226,10 @@ export const useRoomSocket = ({
             participants: prev.participants.filter((p) => p.id !== targetId),
           }
         })
-      }),
+      })
+
       socket.on("user_banned", ({ userId: targetId }) => {
-        if (targetId === user.id) {
+        if (targetId === userId) {
           setRemovalReason("banned")
           setStatus("removed")
           socket.disconnect()
@@ -216,27 +242,34 @@ export const useRoomSocket = ({
             participants: prev.participants.filter((p) => p.id !== targetId),
           }
         })
-      }),
-    ]
+      })
 
-    const password = readRoomPassword(roomUid)
-    socket.emit("join_room", {
-      roomUid,
-      ...(password ? { password } : {}),
-    })
+      socket.on("disconnect", () => {
+        setStatus((prev) =>
+          prev === "joined" || prev === "connecting" ? "connecting" : prev
+        )
+      })
+    }
+
+    void connect()
 
     return () => {
-      unsubs.forEach((unsub) => unsub())
-      socket.disconnect()
+      cancelled = true
+      socketRef.current?.disconnect()
       socketRef.current = null
     }
-  }, [roomUid, userId, username, avatarUrl])
+  }, [roomUid, userId])
 
   const emit = <K extends ClientEventName>(
     event: K,
     payload: ClientToServerEvents[K]
   ) => {
-    socketRef.current?.emit(event, payload)
+    if (!socketRef.current) return
+    // Payload-map types ↔ Socket.io callback-map Parameters
+    ;(socketRef.current.emit as (event: K, payload: ClientToServerEvents[K]) => void)(
+      event,
+      payload
+    )
   }
 
   const leave = () => {
@@ -248,6 +281,7 @@ export const useRoomSocket = ({
   return {
     status,
     errorMessage,
+    errorCode,
     roomState,
     participants: roomState?.participants ?? [],
     messages,

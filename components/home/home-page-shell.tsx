@@ -18,20 +18,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { RECENT_ROOMS } from "@/lib/home/fixtures"
+import { fetchMyRecentRooms } from "@/lib/home/rooms"
 import type { RoomCardData } from "@/lib/home/types"
 
 type HomePageShellProps = {
   displayName: string
+  currentUser: {
+    id: string
+    username: string
+    avatarUrl: string | null
+  } | null
 }
 
-const LOAD_DELAY_MS = 650
-
-export const HomePageShell = ({ displayName }: HomePageShellProps) => {
+export const HomePageShell = ({
+  displayName,
+  currentUser,
+}: HomePageShellProps) => {
   const { notify } = useNotifications()
   const { friendsLiveRooms, isLoading: isFriendsLoading } = useFriends()
   const [isLoading, setIsLoading] = useState(true)
-  const [recentRooms, setRecentRooms] = useState<RoomCardData[]>(RECENT_ROOMS)
+  const [recentRooms, setRecentRooms] = useState<RoomCardData[]>([])
   const [requestedRoomIds, setRequestedRoomIds] = useState<Set<string>>(
     () => new Set()
   )
@@ -43,12 +49,32 @@ export const HomePageShell = ({ displayName }: HomePageShellProps) => {
   const [requestRoom, setRequestRoom] = useState<RoomCardData | null>(null)
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setIsLoading(false), LOAD_DELAY_MS)
-    return () => window.clearTimeout(timer)
-  }, [])
+    let cancelled = false
+
+    const loadRecent = async () => {
+      if (!currentUser) {
+        if (!cancelled) {
+          setRecentRooms([])
+          setIsLoading(false)
+        }
+        return
+      }
+
+      const rooms = await fetchMyRecentRooms(currentUser)
+      if (!cancelled) {
+        setRecentRooms(rooms)
+        setIsLoading(false)
+      }
+    }
+
+    void loadRecent()
+    return () => {
+      cancelled = true
+    }
+  }, [currentUser])
 
   const handleCreated = (room: RoomCardData) => {
-    setRecentRooms((prev) => [room, ...prev])
+    setRecentRooms((prev) => [room, ...prev.filter((r) => r.id !== room.id)])
   }
 
   const handleRequestAccess = (room: RoomCardData) => {
@@ -63,9 +89,6 @@ export const HomePageShell = ({ displayName }: HomePageShellProps) => {
     setRequestRoom(null)
   }
 
-  const hostUsername =
-    displayName.includes("@") ? displayName.split("@")[0] : displayName
-
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <div className="mb-8">
@@ -76,7 +99,8 @@ export const HomePageShell = ({ displayName }: HomePageShellProps) => {
           Watch together
         </h1>
         <p className="mt-2 max-w-xl text-sm text-[#f3eadc]/60">
-          Create a room or jump into one your friends already opened.
+          Welcome back, {displayName}. Create a room or jump into one your
+          friends already opened.
         </p>
       </div>
 
@@ -216,7 +240,6 @@ export const HomePageShell = ({ displayName }: HomePageShellProps) => {
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
         onCreated={handleCreated}
-        hostUsername={hostUsername}
       />
       <JoinRoomDialog open={isJoinOpen} onOpenChange={setIsJoinOpen} />
 

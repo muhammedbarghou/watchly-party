@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { mockJoinRoom } from "@/lib/home/fixtures"
+import { prepareJoinRoom } from "@/lib/home/rooms"
 import { stashRoomPassword } from "@/lib/room/password-store"
 
 type JoinRoomDialogProps = {
@@ -58,9 +58,7 @@ export const JoinRoomDialog = ({
     setErrorMessage(null)
     setIsSubmitting(true)
 
-    await new Promise((resolve) => window.setTimeout(resolve, 450))
-
-    const result = mockJoinRoom(uid, password || undefined)
+    const result = await prepareJoinRoom(uid, password || undefined)
     setIsSubmitting(false)
 
     if (!result.ok) {
@@ -71,12 +69,12 @@ export const JoinRoomDialog = ({
       return
     }
 
-    notify("Joined room")
-    setIsSubmitting(false)
-    onOpenChange(false)
-    if (password) {
-      stashRoomPassword(result.uid, password)
+    if (password.trim()) {
+      stashRoomPassword(result.uid, password.trim())
     }
+
+    notify("Joining room")
+    onOpenChange(false)
     resetForm()
     router.push(`/room/${result.uid}`)
   }
@@ -87,11 +85,8 @@ export const JoinRoomDialog = ({
         <DialogHeader>
           <DialogTitle className="text-[#f3eadc]">Join room</DialogTitle>
           <DialogDescription className="text-[#f3eadc]/55">
-            Enter a room UID shared by a host. Try fixtures like{" "}
-            <span className="text-amber-flame">watch7k</span>,{" "}
-            <span className="text-amber-flame">private1</span> (password{" "}
-            <span className="text-amber-flame">secret</span>), or{" "}
-            <span className="text-amber-flame">missing</span>.
+            Enter a room UID shared by a host. Private rooms may ask for a
+            password.
           </DialogDescription>
         </DialogHeader>
 
@@ -103,7 +98,7 @@ export const JoinRoomDialog = ({
                 id="join-room-uid"
                 value={uid}
                 onChange={(event) => setUid(event.target.value)}
-                placeholder="e.g. watch7k"
+                placeholder="e.g. a3k9xm"
                 autoComplete="off"
                 className="border-night-bordeaux/60 bg-white/5 text-[#f3eadc]"
                 disabled={isSubmitting}
@@ -111,20 +106,21 @@ export const JoinRoomDialog = ({
               />
             </Field>
 
-            {needsPassword ? (
-              <Field>
-                <FieldLabel htmlFor="join-room-password">Password</FieldLabel>
-                <Input
-                  id="join-room-password"
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  autoComplete="current-password"
-                  className="border-night-bordeaux/60 bg-white/5 text-[#f3eadc]"
-                  disabled={isSubmitting}
-                />
-              </Field>
-            ) : null}
+            <Field>
+              <FieldLabel htmlFor="join-room-password">
+                Password {needsPassword ? "" : "(optional)"}
+              </FieldLabel>
+              <Input
+                id="join-room-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                className="border-night-bordeaux/60 bg-white/5 text-[#f3eadc]"
+                disabled={isSubmitting}
+                required={needsPassword}
+              />
+            </Field>
           </FieldGroup>
 
           {errorMessage ? (

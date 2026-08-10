@@ -14,12 +14,32 @@ import { RoomVideoPlayer } from "@/components/room/room-video-player"
 import { RoomVoiceStrip } from "@/components/room/room-voice-strip"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { messageForRoomError } from "@/lib/room/error-messages"
 import { useRoomSocket } from "@/lib/room/use-room-socket"
 import type { CurrentUser } from "@/lib/room/types"
 
 type RoomExperienceProps = {
   roomUid: string
   currentUser: CurrentUser
+}
+
+const titleForErrorCode = (code: string | null): string => {
+  switch (code) {
+    case "NOT_FOUND":
+      return "Room not found"
+    case "BAD_PASSWORD":
+      return "Password required"
+    case "BANNED":
+      return "Banned from this room"
+    case "ROOM_FULL":
+      return "Room is full"
+    case "ROOM_CLOSED":
+      return "Room closed"
+    case "RATE_LIMITED":
+      return "Too many attempts"
+    default:
+      return "Couldn't join room"
+  }
 }
 
 export const RoomExperience = ({
@@ -31,6 +51,7 @@ export const RoomExperience = ({
   const {
     status,
     errorMessage,
+    errorCode,
     roomState,
     participants,
     messages,
@@ -132,10 +153,11 @@ export const RoomExperience = ({
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center px-6 text-center">
         <h1 className="font-serif mb-2 text-2xl text-[#f3eadc]">
-          Couldn’t join room
+          {titleForErrorCode(errorCode)}
         </h1>
         <p className="mb-6 text-sm text-[#f3eadc]/60">
-          {errorMessage ?? "Something went wrong."}
+          {errorMessage ??
+            messageForRoomError(errorCode ?? "", "Something went wrong.")}
         </p>
         <Button
           className="rounded-xl bg-amber-flame text-ink-black hover:bg-[#e5a500]"

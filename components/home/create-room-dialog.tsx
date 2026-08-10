@@ -23,18 +23,15 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import {
-  createMockRoomUid,
-  isValidHttpUrl,
-} from "@/lib/home/fixtures"
-import { stashCreatedRoomMeta } from "@/lib/room/password-store"
+import { createRoomAction } from "@/lib/home/create-room"
+import { isValidHttpUrl } from "@/lib/home/fixtures"
+import { stashRoomPassword } from "@/lib/room/password-store"
 import type { RoomCardData } from "@/lib/home/types"
 
 type CreateRoomDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: (room: RoomCardData) => void
-  hostUsername: string
 }
 
 type CreateFormState = {
@@ -49,7 +46,6 @@ export const CreateRoomDialog = ({
   open,
   onOpenChange,
   onCreated,
-  hostUsername,
 }: CreateRoomDialogProps) => {
   const router = useRouter()
   const { notify } = useNotifications()
@@ -104,42 +100,30 @@ export const CreateRoomDialog = ({
 
     setIsSubmitting(true)
 
-    await new Promise((resolve) => window.setTimeout(resolve, 700))
-
-    const uid = createMockRoomUid()
-    const room: RoomCardData = {
-      id: `created-${uid}`,
-      uid,
-      name: formState.name.trim() || null,
-      status: "active",
+    const result = await createRoomAction({
+      name: formState.name,
       videoUrl: formState.videoUrl.trim(),
-      posterUrl:
-        "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=640&h=360&fit=crop",
-      host: {
-        id: "me",
-        username: hostUsername,
-        avatarUrl: null,
-      },
-      participantCount: 1,
-      requiresApproval: false,
       isPrivate: formState.isPrivate,
+      password: formState.isPrivate ? formState.password.trim() : undefined,
       visibleToFriends: formState.visibleToFriends,
-      createdAt: new Date().toISOString(),
-      closedAt: null,
+    })
+
+    if (!result.ok) {
+      setErrorMessage(result.error)
+      setIsSubmitting(false)
+      return
     }
 
-    onCreated(room)
+    if (formState.isPrivate && formState.password.trim()) {
+      stashRoomPassword(result.room.uid, formState.password.trim())
+    }
+
+    onCreated(result.room)
     notify("Room created")
     setIsSubmitting(false)
     onOpenChange(false)
-    stashCreatedRoomMeta(uid, {
-      name: room.name,
-      videoUrl: room.videoUrl,
-      password: formState.isPrivate ? formState.password.trim() : undefined,
-      isPrivate: formState.isPrivate,
-    })
     resetForm()
-    router.push(`/room/${uid}`)
+    router.push(`/room/${result.room.uid}`)
   }
 
   return (

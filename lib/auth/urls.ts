@@ -1,10 +1,29 @@
+const trimTrailingSlash = (url: string) => url.replace(/\/$/, "")
+
+/**
+ * Canonical site origin for auth redirects.
+ * Prefer the current browser origin on the client so production OAuth never
+ * accidentally uses a localhost Site URL baked into env.
+ */
 export const getSiteUrl = () => {
   if (typeof window !== "undefined") {
     return window.location.origin
   }
 
-  if (process.env.NEXT_PUBLIC_SITE_URL) {
-    return process.env.NEXT_PUBLIC_SITE_URL
+  const configured = process.env.NEXT_PUBLIC_SITE_URL
+  if (configured) {
+    return trimTrailingSlash(configured)
+  }
+
+  // Set automatically on Vercel (no protocol). Prefer production domain when present.
+  const vercelProductionUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  if (vercelProductionUrl) {
+    return `https://${trimTrailingSlash(vercelProductionUrl)}`
+  }
+
+  const vercelUrl = process.env.VERCEL_URL
+  if (vercelUrl) {
+    return `https://${trimTrailingSlash(vercelUrl)}`
   }
 
   return "http://localhost:3000"
