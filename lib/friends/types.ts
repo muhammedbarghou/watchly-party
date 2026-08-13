@@ -28,3 +28,13 @@ export type FriendLookupResult =
       user: FriendUser
       relation: FriendLookupRelation
     }
+
+export type SendFriendRequestStatus =
+  | "created"
+  | "auto_accepted"
+  | "already_pending"
+  | "already_friends"
+
+export type SendFriendRequestResult =
+  | { ok: true; status: SendFriendRequestStatus }
+  | { ok: false; error: string }

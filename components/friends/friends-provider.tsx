@@ -22,6 +22,8 @@ import {
 import type {
   FriendLookupResult,
   FriendshipRow,
+  SendFriendRequestResult,
+  SendFriendRequestStatus,
 } from "@/lib/friends/types"
 import {
   buildLiveRoomByFriendId,
@@ -29,6 +31,16 @@ import {
 } from "@/lib/home/rooms"
 import type { RoomCardData } from "@/lib/home/types"
 import { createClient } from "@/lib/supabase/client"
+
+const sendRequestToast: Record<
+  SendFriendRequestStatus,
+  (name: string) => string
+> = {
+  created: (name) => `Friend request sent to ${name}`,
+  auto_accepted: (name) => `You're now friends with ${name}!`,
+  already_pending: (name) => `Request already sent — waiting on ${name}`,
+  already_friends: (name) => `You're already friends with ${name}`,
+}
 
 type FriendsContextValue = {
   friends: FriendshipRow[]
@@ -42,7 +54,7 @@ type FriendsContextValue = {
   acceptRequest: (id: string) => Promise<void>
   declineRequest: (id: string) => Promise<void>
   cancelRequest: (id: string) => Promise<void>
-  sendRequest: (username: string) => Promise<boolean>
+  sendRequest: (username: string) => Promise<SendFriendRequestResult | null>
   removeFriend: (id: string) => Promise<void>
 }
 
@@ -270,21 +282,22 @@ export const FriendsProvider = ({ children }: FriendsProviderProps) => {
   )
 
   const sendRequest = useCallback(
-    async (username: string) => {
-      if (!currentUserId) return false
+    async (username: string): Promise<SendFriendRequestResult | null> => {
+      if (!currentUserId) return null
 
       const result = await lookupUsernameApi(username, currentUserId)
-      if (!result.ok || result.relation !== "none") return false
+      if (!result.ok) return null
 
       const mutation = await sendFriendRequest(result.user.id, currentUserId)
       if (!mutation.ok) {
         notify(mutation.error)
-        return false
+        return mutation
       }
 
-      notify(`Friend request sent to ${result.user.username}`)
+      notify(sendRequestToast[mutation.status](result.user.username))
+
       await refresh(currentUserId)
-      return true
+      return mutation
     },
     [currentUserId, notify, refresh]
   )

@@ -4,6 +4,7 @@ import type {
   FriendUser,
   FriendshipRow,
   FriendshipStatus,
+  SendFriendRequestResult,
 } from "@/lib/friends/types"
 
 type UserRow = {
@@ -30,6 +31,9 @@ export type FriendshipsSnapshot = {
 
 const normalizeUsername = (username: string): string =>
   username.trim().toLowerCase()
+
+const pairFilter = (userAId: string, userBId: string): string =>
+  `and(requester_id.eq.${userAId},recipient_id.eq.${userBId}),and(requester_id.eq.${userBId},recipient_id.eq.${userAId})`
 
 const asUser = (value: UserRow | UserRow[] | null): UserRow | null => {
   if (!value) return null
@@ -144,9 +148,7 @@ export const lookupUsername = async (
   const { data: existing } = await supabase
     .from("friendships")
     .select("id, requester_id, recipient_id, status")
-    .or(
-      `and(requester_id.eq.${currentUserId},recipient_id.eq.${user.id}),and(requester_id.eq.${user.id},recipient_id.eq.${currentUserId})`
-    )
+    .or(pairFilter(currentUserId, user.id))
     .maybeSingle()
 
   let relation: "none" | "already_friends" | "outgoing_pending" | "incoming_pending" =
@@ -173,54 +175,69 @@ export type FriendMutationResult =
   | { ok: true }
   | { ok: false; error: string }
 
-export const sendFriendRequest = async (
+const sendFriendRequestOnce = async (
   targetUserId: string,
-  currentUserId: string
-): Promise<FriendMutationResult> => {
+  currentUserId: string,
+  retried: boolean
+): Promise<SendFriendRequestResult> => {
   if (targetUserId === currentUserId) {
     return { ok: false, error: "You can't friend yourself." }
   }
 
   const supabase = createClient()
 
-  const { data: reverse } = await supabase
+  const { data: existing, error: lookupError } = await supabase
     .from("friendships")
-    .select("id, status")
-    .eq("requester_id", targetUserId)
-    .eq("recipient_id", currentUserId)
+    .select("id, requester_id, recipient_id, status")
+    .or(pairFilter(currentUserId, targetUserId))
     .maybeSingle()
 
-  if (reverse?.status === "pending") {
-    const { error } = await supabase
+  if (lookupError) {
+    return { ok: false, error: lookupError.message }
+  }
+
+  if (existing) {
+    if (existing.status === "accepted") {
+      return { ok: true, status: "already_friends" }
+    }
+
+    if (existing.requester_id === currentUserId) {
+      return { ok: true, status: "already_pending" }
+    }
+
+    const { error: updateError } = await supabase
       .from("friendships")
       .update({ status: "accepted" })
-      .eq("id", reverse.id)
+      .eq("id", existing.id)
 
-    if (error) {
-      return { ok: false, error: error.message }
+    if (updateError) {
+      return { ok: false, error: updateError.message }
     }
-    return { ok: true }
+
+    return { ok: true, status: "auto_accepted" }
   }
 
-  if (reverse?.status === "accepted") {
-    return { ok: false, error: "You are already friends." }
-  }
-
-  const { error } = await supabase.from("friendships").insert({
+  const { error: insertError } = await supabase.from("friendships").insert({
     requester_id: currentUserId,
     recipient_id: targetUserId,
     status: "pending",
   })
 
-  if (error) {
-    if (error.code === "23505") {
-      return { ok: false, error: "A friend request already exists." }
+  if (insertError) {
+    if (insertError.code === "23505" && !retried) {
+      return sendFriendRequestOnce(targetUserId, currentUserId, true)
     }
-    return { ok: false, error: error.message }
+    return { ok: false, error: insertError.message }
   }
 
-  return { ok: true }
+  return { ok: true, status: "created" }
 }
+
+export const sendFriendRequest = async (
+  targetUserId: string,
+  currentUserId: string
+): Promise<SendFriendRequestResult> =>
+  sendFriendRequestOnce(targetUserId, currentUserId, false)
 
 export const acceptFriendRequest = async (
   friendshipId: string

@@ -32,11 +32,28 @@ import {
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type {
+  FriendLookupRelation,
   FriendLookupResult,
   FriendshipRow,
 } from "@/lib/friends/types"
 
 type FriendsTabValue = "friends" | "requests" | "add"
+
+const getLookupMeta = (
+  relation: FriendLookupRelation,
+  username: string
+): string | null => {
+  if (relation === "already_friends") {
+    return `You're already friends with ${username}`
+  }
+  if (relation === "outgoing_pending") {
+    return `Request already sent — waiting on ${username}`
+  }
+  if (relation === "incoming_pending") {
+    return `${username} already sent you a request`
+  }
+  return null
+}
 
 export const FriendsPageShell = () => {
   const {
@@ -126,24 +143,32 @@ export const FriendsPageShell = () => {
   }
 
   const handleSendRequest = async () => {
-    if (!lookupResult?.ok || lookupResult.relation !== "none") return
+    if (
+      !lookupResult?.ok ||
+      (lookupResult.relation !== "none" &&
+        lookupResult.relation !== "incoming_pending")
+    ) {
+      return
+    }
+
     setIsSending(true)
     try {
-      const sent = await sendRequest(lookupResult.user.username)
-      if (sent) {
-        setLookupResult({
-          ok: true,
-          user: lookupResult.user,
-          relation: "outgoing_pending",
-        })
-      }
+      const mutation = await sendRequest(lookupResult.user.username)
+      if (!mutation?.ok) return
+
+      const nextRelation: FriendLookupRelation =
+        mutation.status === "created" || mutation.status === "already_pending"
+          ? "outgoing_pending"
+          : "already_friends"
+
+      setLookupResult({
+        ok: true,
+        user: lookupResult.user,
+        relation: nextRelation,
+      })
     } finally {
       setIsSending(false)
     }
-  }
-
-  const handleRespondToRequest = () => {
-    setTab("requests")
   }
 
   return (
@@ -441,6 +466,10 @@ export const FriendsPageShell = () => {
               <ul className="overflow-hidden rounded-xl border border-night-bordeaux/50">
                 <FriendListRow
                   user={lookupResult.user}
+                  meta={getLookupMeta(
+                    lookupResult.relation,
+                    lookupResult.user.username
+                  )}
                   actions={
                     lookupResult.relation === "already_friends" ? (
                       <Button type="button" disabled>
@@ -453,12 +482,12 @@ export const FriendsPageShell = () => {
                     ) : lookupResult.relation === "incoming_pending" ? (
                       <Button
                         type="button"
-                        variant="outline"
-                        className="border-night-bordeaux/50 text-[#f3eadc]"
-                        onClick={handleRespondToRequest}
-                        aria-label="Go to Requests tab to respond"
+                        disabled={isSending}
+                        className="bg-amber-flame text-ink-black hover:bg-[#e5a500]"
+                        onClick={() => void handleSendRequest()}
+                        aria-label={`Accept friend request from ${lookupResult.user.username}`}
                       >
-                        Respond to request
+                        {isSending ? "Accepting…" : "Accept request"}
                       </Button>
                     ) : (
                       <Button
