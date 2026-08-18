@@ -293,6 +293,25 @@
     animation: cinema-glow 4s ease-in-out infinite;
   }
 
+  @keyframes reaction-float {
+    0% {
+      opacity: 0;
+      transform: translateY(0) scale(0.8);
+    }
+    15% {
+      opacity: 1;
+      transform: translateY(-20px) scale(1.15);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-140px) scale(1);
+    }
+  }
+
+  .animate-reaction-float {
+    animation: reaction-float 2s ease-out forwards;
+  }
+
   .hero-gradient {
     background:
       radial-gradient(circle at 30% 20%, rgba(106, 4, 15, 0.35), transparent 55%),

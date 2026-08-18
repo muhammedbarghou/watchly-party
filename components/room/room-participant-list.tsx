@@ -154,6 +154,17 @@ export const RoomParticipantList = ({
                       Playback control
                     </DropdownMenuCheckboxItem>
                     <DropdownMenuCheckboxItem
+                      checked={participant.hasQueueControl}
+                      onCheckedChange={(checked) =>
+                        emit("grant_queue_control", {
+                          targetUserId: participant.id,
+                          granted: Boolean(checked),
+                        })
+                      }
+                    >
+                      Queue control
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem
                       checked={participant.muted}
                       onCheckedChange={(checked) =>
                         emit("mute_user", {

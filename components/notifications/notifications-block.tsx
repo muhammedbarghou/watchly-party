@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   CheckCheck,
@@ -9,9 +9,10 @@ import {
   UsersIcon,
 } from "lucide-react"
 
-import { useAppSocket } from "@/components/notifications/app-socket-provider"
-import { useNotifications } from "@/components/notifications/notification-provider"
 import { useFriends } from "@/components/friends/friends-provider"
+import { useAppSocket } from "@/components/notifications/app-socket-provider"
+import { NotificationFeed } from "@/components/notifications/notification-feed"
+import { useNotifications } from "@/components/notifications/notification-provider"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,9 +20,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { InboxNotification } from "@/lib/home/types"
+import { useNotificationFeed } from "@/lib/notifications/use-notifications"
+import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 
-type Filter = "all" | "unread" | "requests"
+type Filter = "all" | "unread" | "requests" | "activity"
 
 const formatRelativeTime = (iso: string): string => {
   const diffMs = Date.now() - new Date(iso).getTime()
@@ -80,6 +83,16 @@ export const NotificationsBlock = ({
   const { emit } = useAppSocket()
   const [filter, setFilter] = useState<Filter>("all")
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set())
+  const [userId, setUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    void supabase.auth.getUser().then(({ data }) => {
+      setUserId(data.user?.id ?? null)
+    })
+  }, [])
+
+  const feed = useNotificationFeed(userId)
 
   const requestsCount = useMemo(
     () => inbox.filter(isRequestType).length,
@@ -87,6 +100,7 @@ export const NotificationsBlock = ({
   )
 
   const visible = useMemo(() => {
+    if (filter === "activity") return []
     if (filter === "unread") return inbox.filter((item) => !item.read)
     if (filter === "requests") return inbox.filter(isRequestType)
     return inbox
@@ -183,6 +197,17 @@ export const NotificationsBlock = ({
     removeInboxById(item.id)
   }
 
+  const handleMarkAllRead = () => {
+    if (filter === "activity") {
+      void feed.markAllRead()
+      return
+    }
+    markAllRead()
+  }
+
+  const headerUnread =
+    filter === "activity" ? feed.unreadCount : unreadCount
+
   return (
     <div
       className={cn(
@@ -210,8 +235,8 @@ export const NotificationsBlock = ({
           variant="ghost"
           size="sm"
           className="h-auto px-1 py-0 text-xs text-amber-flame hover:bg-transparent hover:text-[#e5a500]"
-          onClick={markAllRead}
-          disabled={unreadCount === 0}
+          onClick={handleMarkAllRead}
+          disabled={headerUnread === 0}
           aria-label="Mark all notifications as read"
         >
           <CheckCheck className="size-3.5" aria-hidden />
@@ -256,10 +281,26 @@ export const NotificationsBlock = ({
               </span>
             ) : null}
           </TabsTrigger>
+          <TabsTrigger
+            value="activity"
+            className="flex-1 rounded-none px-2 py-2 text-[#f3eadc]/60 data-active:text-[#f3eadc]"
+          >
+            Activity
+            {feed.unreadCount > 0 ? (
+              <span className="ml-1 rounded-full bg-amber-flame/15 px-1.5 text-[10px] text-amber-flame tabular-nums">
+                {feed.unreadCount}
+              </span>
+            ) : null}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value={filter} className="outline-none">
-          {visible.length === 0 ? (
+          {filter === "activity" ? (
+            <NotificationFeed
+              notifications={feed.notifications}
+              onMarkRead={feed.markRead}
+            />
+          ) : visible.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
               <CheckCheck className="size-5 text-[#f3eadc]/35" aria-hidden />
               <p className="text-sm text-[#f3eadc]/70">You&apos;re all caught up</p>

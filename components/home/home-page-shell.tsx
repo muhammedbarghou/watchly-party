@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { DoorOpenIcon, PlusIcon, UsersIcon } from "lucide-react"
 
 import { useFriends } from "@/components/friends/friends-provider"
 import { CreateRoomDialog } from "@/components/home/create-room-dialog"
 import { JoinRoomDialog } from "@/components/home/join-room-dialog"
 import { RoomCard, RoomCardSkeleton } from "@/components/home/room-card"
+import { RoomHistoryList } from "@/components/home/room-history-list"
 import { useAppSocket } from "@/components/notifications/app-socket-provider"
 import { useNotifications } from "@/components/notifications/notification-provider"
 import { usePreferences } from "@/components/settings/preferences-provider"
@@ -21,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { fetchRoomHistory, type RoomHistoryEntry } from "@/lib/home/room-history"
 import { fetchMyRecentRooms } from "@/lib/home/rooms"
 import type { RoomCardData } from "@/lib/home/types"
 
@@ -41,8 +44,10 @@ export const HomePageShell = ({
   const { emit } = useAppSocket()
   const { preferences } = usePreferences()
   const { friendsLiveRooms, isLoading: isFriendsLoading } = useFriends()
+  const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
   const [recentRooms, setRecentRooms] = useState<RoomCardData[]>([])
+  const [joinedHistory, setJoinedHistory] = useState<RoomHistoryEntry[]>([])
   const [requestedRoomIds, setRequestedRoomIds] = useState<Set<string>>(
     () => new Set()
   )
@@ -51,6 +56,8 @@ export const HomePageShell = ({
   const [closedDetailRoom, setClosedDetailRoom] = useState<RoomCardData | null>(
     null
   )
+  const [closedHistoryEntry, setClosedHistoryEntry] =
+    useState<RoomHistoryEntry | null>(null)
   const [requestRoom, setRequestRoom] = useState<RoomCardData | null>(null)
   const [isRequesting, setIsRequesting] = useState(false)
 
@@ -61,14 +68,19 @@ export const HomePageShell = ({
       if (!currentUser) {
         if (!cancelled) {
           setRecentRooms([])
+          setJoinedHistory([])
           setIsLoading(false)
         }
         return
       }
 
-      const rooms = await fetchMyRecentRooms(currentUser)
+      const [rooms, history] = await Promise.all([
+        fetchMyRecentRooms(currentUser),
+        fetchRoomHistory(),
+      ])
       if (!cancelled) {
         setRecentRooms(rooms)
+        setJoinedHistory(history)
         setIsLoading(false)
       }
     }
@@ -208,7 +220,7 @@ export const HomePageShell = ({
         )}
       </section>
 
-      <section aria-labelledby="recent-rooms-heading">
+      <section aria-labelledby="recent-rooms-heading" className="mb-12">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2
             id="recent-rooms-heading"
@@ -257,6 +269,36 @@ export const HomePageShell = ({
               />
             ))}
           </div>
+        )}
+      </section>
+
+      <section aria-labelledby="joined-rooms-heading">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2
+            id="joined-rooms-heading"
+            className="font-serif text-xl text-[#f3eadc]"
+          >
+            Recently joined
+          </h2>
+        </div>
+
+        {isLoading ? (
+          <div className="flex flex-col gap-2">
+            <div className="glass-panel h-16 rounded-xl" />
+            <div className="glass-panel h-16 rounded-xl" />
+          </div>
+        ) : joinedHistory.length === 0 ? (
+          <div className="glass-panel rounded-2xl px-6 py-10 text-center">
+            <p className="text-sm text-[#f3eadc]/70">
+              Rooms you join will show up here, even after they close.
+            </p>
+          </div>
+        ) : (
+          <RoomHistoryList
+            entries={joinedHistory}
+            onSelectActive={(entry) => router.push(`/room/${entry.roomUid}`)}
+            onSelectClosed={setClosedHistoryEntry}
+          />
         )}
       </section>
 
@@ -336,6 +378,35 @@ export const HomePageShell = ({
               type="button"
               className="bg-amber-flame text-ink-black hover:bg-[#e5a500]"
               onClick={() => setClosedDetailRoom(null)}
+            >
+              Got it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(closedHistoryEntry)}
+        onOpenChange={(open) => {
+          if (!open) setClosedHistoryEntry(null)
+        }}
+      >
+        <DialogContent className="border-night-bordeaux/50 bg-ink-black text-[#f3eadc] sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-[#f3eadc]">
+              {closedHistoryEntry?.roomName?.trim() || "Closed room"}
+            </DialogTitle>
+            <DialogDescription className="text-[#f3eadc]/55">
+              {closedHistoryEntry
+                ? `This room is closed. Hosted by ${closedHistoryEntry.hostUsername}.`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="border-night-bordeaux/40 bg-transparent">
+            <Button
+              type="button"
+              className="bg-amber-flame text-ink-black hover:bg-[#e5a500]"
+              onClick={() => setClosedHistoryEntry(null)}
             >
               Got it
             </Button>

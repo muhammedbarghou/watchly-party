@@ -10,6 +10,20 @@ export type RoomParticipant = {
   muted: boolean
   mutedByAdmin: boolean
   hasPlaybackControl: boolean
+  hasQueueControl: boolean
+}
+
+export type QueueItem = {
+  id: string
+  url: string
+}
+
+export type RoomReaction = {
+  id: string
+  userId: string
+  emoji: string
+  timestamp: number
+  offsetPercent: number
 }
 
 export type PlaybackState = {
@@ -25,6 +39,7 @@ export type RoomState = {
   adminId: string
   participants: RoomParticipant[]
   playbackState: PlaybackState
+  queue: QueueItem[]
 }
 
 export type ChatMessage = {
@@ -53,6 +68,12 @@ export type ClientToServerEvents = {
   }
   sync_ping: { clientPositionMs: number }
   grant_playback_control: { targetUserId: string; granted: boolean }
+  grant_queue_control: { targetUserId: string; granted: boolean }
+  send_reaction: { emoji: string }
+  queue_add: { url: string }
+  queue_remove: { itemId: string }
+  queue_reorder: { itemIds: string[] }
+  video_ended: Record<string, never>
   kick_user: { targetUserId: string }
   mute_user: { targetUserId: string; muted: boolean }
   ban_user: { targetUserId: string }
@@ -77,8 +98,12 @@ export type ServerToClientEvents = {
     status: PlaybackStatus
     positionMs: number
     serverTime: number
+    videoUrl?: string
   }
   playback_control_granted: { userId: string; granted: boolean }
+  queue_control_granted: { userId: string; granted: boolean }
+  reaction_received: { userId: string; emoji: string; timestamp: number }
+  queue_state: { videoUrl: string; queue: QueueItem[] }
   user_kicked: { userId: string }
   user_banned: { userId: string }
   user_muted: { userId: string; muted: boolean; byAdmin?: boolean }

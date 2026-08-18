@@ -13,9 +13,11 @@ import type {
   PlaybackState,
   RemovalReason,
   RoomParticipant,
+  RoomReaction,
   RoomSocketStatus,
   RoomState,
 } from "@/lib/room/types"
+import { REACTION_OVERLAY_MS } from "@/lib/room/reactions"
 import { createRoomSocket, type RoomSocket } from "@/lib/socket"
 
 export type PendingAccessRequest = {
@@ -36,9 +38,11 @@ type UseRoomSocketResult = {
   roomState: RoomState | null
   participants: RoomParticipant[]
   messages: ChatMessage[]
+  reactions: RoomReaction[]
   playback: PlaybackState | null
   removalReason: RemovalReason
   pendingAccessRequests: PendingAccessRequest[]
+  inRoomNotice: { id: number; message: string } | null
   socket: RoomSocket | null
   emit: <K extends ClientEventName>(
     event: K,
@@ -58,12 +62,19 @@ export const useRoomSocket = ({
   const [errorCode, setErrorCode] = useState<string | null>(null)
   const [roomState, setRoomState] = useState<RoomState | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [reactions, setReactions] = useState<RoomReaction[]>([])
   const [pendingAccessRequests, setPendingAccessRequests] = useState<
     PendingAccessRequest[]
   >([])
   const [removalReason, setRemovalReason] = useState<RemovalReason>(null)
+  const [inRoomNotice, setInRoomNotice] = useState<{
+    id: number
+    message: string
+  } | null>(null)
   const [socket, setSocket] = useState<RoomSocket | null>(null)
   const socketRef = useRef<RoomSocket | null>(null)
+  const joinedRef = useRef(false)
+  const noticeIdRef = useRef(0)
 
   const userId = currentUser.id
 
@@ -82,9 +93,12 @@ export const useRoomSocket = ({
       setErrorCode(null)
       setRoomState(null)
       setMessages([])
+      setReactions([])
       setPendingAccessRequests([])
       setRemovalReason(null)
+      setInRoomNotice(null)
       setSocket(null)
+      joinedRef.current = false
 
       let nextSocket: RoomSocket
       try {
@@ -132,13 +146,28 @@ export const useRoomSocket = ({
       })
 
       nextSocket.on("room_state", (state) => {
-        setRoomState(state)
+        joinedRef.current = true
+        setRoomState({
+          ...state,
+          queue: state.queue ?? [],
+        })
         setStatus("joined")
         setErrorMessage(null)
         setErrorCode(null)
       })
 
       nextSocket.on("error", (err) => {
+        if (
+          joinedRef.current &&
+          (err.code === "RATE_LIMITED" || err.code === "FORBIDDEN")
+        ) {
+          noticeIdRef.current += 1
+          setInRoomNotice({
+            id: noticeIdRef.current,
+            message: err.message || messageForRoomError(err.code, err.message),
+          })
+          return
+        }
         setErrorCode(err.code)
         setErrorMessage(messageForRoomError(err.code, err.message))
         setStatus("error")
@@ -173,12 +202,40 @@ export const useRoomSocket = ({
         setMessages((prev) => [...prev, message])
       })
 
+      nextSocket.on("reaction_received", (reaction) => {
+        const id = `${reaction.userId}-${reaction.timestamp}-${reaction.emoji}-${Math.random().toString(36).slice(2, 8)}`
+        const item: RoomReaction = {
+          id,
+          userId: reaction.userId,
+          emoji: reaction.emoji,
+          timestamp: reaction.timestamp,
+          offsetPercent: 12 + Math.random() * 76,
+        }
+        setReactions((prev) => [...prev, item])
+        window.setTimeout(() => {
+          setReactions((prev) => prev.filter((entry) => entry.id !== id))
+        }, REACTION_OVERLAY_MS)
+      })
+
       nextSocket.on("playback_sync", (sync) => {
+        setRoomState((prev) => {
+          if (!prev) return prev
+          const { videoUrl: nextUrl, ...playback } = sync
+          return {
+            ...prev,
+            ...(nextUrl ? { videoUrl: nextUrl } : {}),
+            playbackState: playback,
+          }
+        })
+      })
+
+      nextSocket.on("queue_state", ({ videoUrl, queue }) => {
         setRoomState((prev) => {
           if (!prev) return prev
           return {
             ...prev,
-            playbackState: { ...sync },
+            videoUrl,
+            queue,
           }
         })
       })
@@ -192,6 +249,21 @@ export const useRoomSocket = ({
               ...prev,
               participants: prev.participants.map((p) =>
                 p.id === targetId ? { ...p, hasPlaybackControl: granted } : p
+              ),
+            }
+          })
+        }
+      )
+
+      nextSocket.on(
+        "queue_control_granted",
+        ({ userId: targetId, granted }) => {
+          setRoomState((prev) => {
+            if (!prev) return prev
+            return {
+              ...prev,
+              participants: prev.participants.map((p) =>
+                p.id === targetId ? { ...p, hasQueueControl: granted } : p
               ),
             }
           })
@@ -232,10 +304,16 @@ export const useRoomSocket = ({
                   ...p,
                   role: "admin",
                   hasPlaybackControl: true,
+                  hasQueueControl: true,
                 }
               }
               if (p.role === "admin") {
-                return { ...p, role: "viewer" }
+                return {
+                  ...p,
+                  role: "viewer",
+                  hasPlaybackControl: false,
+                  hasQueueControl: false,
+                }
               }
               return p
             }),
@@ -337,9 +415,11 @@ export const useRoomSocket = ({
     roomState,
     participants: roomState?.participants ?? [],
     messages,
+    reactions,
     playback: roomState?.playbackState ?? null,
     removalReason,
     pendingAccessRequests,
+    inRoomNotice,
     socket,
     emit,
     leave,

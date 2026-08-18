@@ -191,6 +191,7 @@ export type VideoPlayerSyncedProps = {
   onTimeUpdate?: (positionMs: number) => void
   onBuffer?: () => void
   onReady?: () => void
+  onEnded?: () => void
 }
 
 /** Full playback surface for the room — react-player + media-chrome controls. */
@@ -209,6 +210,7 @@ export const VideoPlayerSynced = forwardRef<
     onTimeUpdate,
     onBuffer,
     onReady,
+    onEnded,
   },
   ref
 ) {
@@ -251,20 +253,26 @@ export const VideoPlayerSynced = forwardRef<
       onTimeUpdate?.(Math.round(el.currentTime * 1000))
     }
 
+    const handleEnded = () => {
+      onEnded?.()
+    }
+
     el.addEventListener("seeked", handleSeeked)
     el.addEventListener("seeking", handleSeeking)
     el.addEventListener("timeupdate", handleTimeUpdate)
+    el.addEventListener("ended", handleEnded)
     return () => {
       el.removeEventListener("seeked", handleSeeked)
       el.removeEventListener("seeking", handleSeeking)
       el.removeEventListener("timeupdate", handleTimeUpdate)
+      el.removeEventListener("ended", handleEnded)
     }
-  }, [controlsEnabled, onSeeked, onTimeUpdate])
+  }, [controlsEnabled, onSeeked, onTimeUpdate, onEnded])
 
   return (
     <VideoPlayer
       className={cn(
-        "relative aspect-video w-full overflow-hidden bg-ink-black",
+        "relative aspect-video h-full w-full overflow-hidden bg-ink-black",
         className
       )}
     >
@@ -288,6 +296,7 @@ export const VideoPlayerSynced = forwardRef<
         onPlay={onPlay}
         onPause={onPause}
         onWaiting={onBuffer}
+        onEnded={onEnded}
       />
 
       {controlsEnabled ? (

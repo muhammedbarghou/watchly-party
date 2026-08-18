@@ -8,6 +8,8 @@ import { Loader2Icon } from "lucide-react"
 import { useNotifications } from "@/components/notifications/notification-provider"
 import { RoomChat } from "@/components/room/room-chat"
 import { RoomParticipantList } from "@/components/room/room-participant-list"
+import { RoomQueue } from "@/components/room/room-queue"
+import { RoomReactionBar } from "@/components/room/room-reaction-bar"
 import { RoomRemovedGate } from "@/components/room/room-removed-gate"
 import { RoomTopBar } from "@/components/room/room-top-bar"
 import { RoomVideoPlayer } from "@/components/room/room-video-player"
@@ -63,9 +65,11 @@ export const RoomExperience = ({
     roomState,
     participants,
     messages,
+    reactions,
     playback,
     removalReason,
     pendingAccessRequests,
+    inRoomNotice,
     socket,
     emit,
     leave,
@@ -170,6 +174,29 @@ export const RoomExperience = ({
     }
   }, [participants, currentUser.id, notify])
 
+  const prevQueueGrant = useRef<boolean | null>(null)
+  useEffect(() => {
+    const self = participants.find((p) => p.id === currentUser.id)
+    if (!self) return
+    if (prevQueueGrant.current === null) {
+      prevQueueGrant.current = self.hasQueueControl
+      return
+    }
+    if (prevQueueGrant.current !== self.hasQueueControl) {
+      notify(
+        self.hasQueueControl
+          ? "You were granted queue control"
+          : "Queue control was revoked"
+      )
+      prevQueueGrant.current = self.hasQueueControl
+    }
+  }, [participants, currentUser.id, notify])
+
+  useEffect(() => {
+    if (!inRoomNotice) return
+    notify(inRoomNotice.message)
+  }, [inRoomNotice, notify])
+
   const handleLeave = () => {
     leave()
     router.push("/home-page")
@@ -225,6 +252,8 @@ export const RoomExperience = ({
   const self = participants.find((p) => p.id === currentUser.id)
   const canControl =
     isAdmin || Boolean(self?.hasPlaybackControl)
+  const canMutateQueue =
+    isAdmin || Boolean(self?.hasQueueControl)
 
   const sidebar = (
     <>
@@ -260,14 +289,26 @@ export const RoomExperience = ({
       />
 
       <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="shrink-0 p-2 sm:min-h-0 sm:flex-1 sm:p-3">
-            <RoomVideoPlayer
-              videoUrl={roomState.videoUrl}
-              playback={playback}
-              canControl={canControl}
-              emit={emit}
-            />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:overflow-hidden">
+            <div className="min-h-[12rem] flex-1 p-2 sm:min-h-0 sm:p-3">
+              <RoomVideoPlayer
+                videoUrl={roomState.videoUrl}
+                playback={playback}
+                canControl={canControl}
+                reactions={reactions}
+                emit={emit}
+              />
+            </div>
+            <div className="shrink-0 space-y-2 px-2 pb-2 sm:px-3">
+              <RoomReactionBar emit={emit} />
+              <RoomQueue
+                currentUrl={roomState.videoUrl}
+                queue={roomState.queue ?? []}
+                canMutate={canMutateQueue}
+                emit={emit}
+              />
+            </div>
           </div>
           <RoomVoiceStrip
             participants={participants}
