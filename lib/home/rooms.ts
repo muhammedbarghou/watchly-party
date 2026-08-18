@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/client"
-import type { JoinRoomResult, RoomCardData } from "@/lib/home/types"
+import type { JoinRoomResult, RoomCardData, RoomVisibility } from "@/lib/home/types"
 
 type SoftLookupRow = {
   uid: string
   is_private: boolean | null
+  visibility?: RoomVisibility | null
   status: string | null
 }
 
@@ -16,7 +17,7 @@ export const softLookupRoom = async (
   const supabase = createClient()
   const { data } = await supabase
     .from("rooms")
-    .select("uid, is_private, status")
+    .select("uid, is_private, visibility, status")
     .eq("uid", normalized)
     .maybeSingle()
 
@@ -39,7 +40,8 @@ export const prepareJoinRoom = async (
       return { ok: false, error: "This room is closed." }
     }
 
-    if (row.is_private && !password?.trim()) {
+    const isPublic = row.visibility === "public"
+    if (!isPublic && row.is_private && !password?.trim()) {
       return {
         ok: false,
         error: "This room requires a password.",
@@ -62,6 +64,7 @@ type RecentRoomRow = {
   video_url: string
   is_private: boolean | null
   visible_to_friends: boolean | null
+  visibility?: RoomVisibility | null
   created_at: string | null
   closed_at?: string | null
   created_by: string
@@ -73,34 +76,64 @@ type RoomHost = {
   avatarUrl: string | null
 }
 
+type HostEmbed = {
+  id: string
+  username: string
+  avatar_url: string | null
+}
+
 const DEFAULT_POSTER =
   "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=640&h=360&fit=crop"
 
 const RECENT_ROOMS_SELECT =
-  "id, uid, name, status, video_url, is_private, visible_to_friends, created_at, closed_at, created_by"
+  "id, uid, name, status, video_url, is_private, visible_to_friends, visibility, created_at, closed_at, created_by"
 
 const RECENT_ROOMS_SELECT_LEGACY =
   "id, uid, name, status, video_url, is_private, visible_to_friends, created_at, created_by"
 
-const mapRoomCard = (row: RecentRoomRow, host: RoomHost): RoomCardData => ({
-  id: row.id,
-  uid: row.uid,
-  name: row.name,
-  status: row.status === "closed" ? "closed" : "active",
-  videoUrl: row.video_url,
-  posterUrl: DEFAULT_POSTER,
-  host: {
-    id: host.id,
-    username: host.username,
-    avatarUrl: host.avatarUrl,
-  },
-  participantCount: 0,
-  requiresApproval: Boolean(row.is_private),
-  isPrivate: Boolean(row.is_private),
-  visibleToFriends: Boolean(row.visible_to_friends),
-  createdAt: row.created_at ?? new Date().toISOString(),
-  closedAt: row.status === "closed" ? (row.closed_at ?? null) : null,
-})
+const PUBLIC_ROOMS_SELECT = `${RECENT_ROOMS_SELECT}, host:users!rooms_created_by_fkey ( id, username, avatar_url )`
+
+const asOne = <T>(value: T | T[] | null | undefined): T | null => {
+  if (!value) return null
+  return Array.isArray(value) ? (value[0] ?? null) : value
+}
+
+const resolveVisibility = (row: RecentRoomRow): RoomVisibility => {
+  if (
+    row.visibility === "public" ||
+    row.visibility === "friends" ||
+    row.visibility === "private"
+  ) {
+    return row.visibility
+  }
+  return row.visible_to_friends === false ? "private" : "friends"
+}
+
+const mapRoomCard = (row: RecentRoomRow, host: RoomHost): RoomCardData => {
+  const visibility = resolveVisibility(row)
+  const isPrivate = Boolean(row.is_private) && visibility !== "public"
+
+  return {
+    id: row.id,
+    uid: row.uid,
+    name: row.name,
+    status: row.status === "closed" ? "closed" : "active",
+    videoUrl: row.video_url,
+    posterUrl: DEFAULT_POSTER,
+    host: {
+      id: host.id,
+      username: host.username,
+      avatarUrl: host.avatarUrl,
+    },
+    participantCount: 0,
+    requiresApproval: isPrivate,
+    isPrivate,
+    visibility,
+    visibleToFriends: visibility !== "private",
+    createdAt: row.created_at ?? new Date().toISOString(),
+    closedAt: row.status === "closed" ? (row.closed_at ?? null) : null,
+  }
+}
 
 export const fetchMyRecentRooms = async (
   host: RoomHost
@@ -116,7 +149,7 @@ export const fetchMyRecentRooms = async (
   let data: RecentRoomRow[] | null = primary.data as RecentRoomRow[] | null
   let error = primary.error
 
-  // closed_at may not exist until the rooms_closed_at migration is applied.
+  // closed_at / visibility may not exist until migrations are applied.
   if (error?.code === "42703") {
     const legacy = await supabase
       .from("rooms")
@@ -136,7 +169,7 @@ export const fetchMyRecentRooms = async (
   return data.map((row) => mapRoomCard(row, host))
 }
 
-/** Active rooms hosted by accepted friends with visible_to_friends. */
+/** Active rooms hosted by accepted friends with friends or public visibility. */
 export const fetchFriendsLiveRooms = async (
   friends: RoomHost[]
 ): Promise<RoomCardData[]> => {
@@ -151,7 +184,7 @@ export const fetchFriendsLiveRooms = async (
     .select(RECENT_ROOMS_SELECT)
     .in("created_by", friendIds)
     .eq("status", "active")
-    .eq("visible_to_friends", true)
+    .in("visibility", ["friends", "public"])
     .order("created_at", { ascending: false })
     .limit(24)
 
@@ -180,6 +213,38 @@ export const fetchFriendsLiveRooms = async (
     const host = hostById.get(row.created_by)
     if (!host) return []
     return [mapRoomCard(row, host)]
+  })
+}
+
+type PublicRoomRow = RecentRoomRow & {
+  host?: HostEmbed | HostEmbed[] | null
+}
+
+/** Active public rooms visible to any authenticated user. */
+export const fetchPublicLiveRooms = async (): Promise<RoomCardData[]> => {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from("rooms")
+    .select(PUBLIC_ROOMS_SELECT)
+    .eq("status", "active")
+    .eq("visibility", "public")
+    .order("created_at", { ascending: false })
+    .limit(24)
+
+  if (error || !data) {
+    return []
+  }
+
+  return (data as PublicRoomRow[]).flatMap((row) => {
+    const hostRow = asOne(row.host)
+    if (!hostRow) return []
+    return [
+      mapRoomCard(row, {
+        id: hostRow.id,
+        username: hostRow.username,
+        avatarUrl: hostRow.avatar_url,
+      }),
+    ]
   })
 }
 

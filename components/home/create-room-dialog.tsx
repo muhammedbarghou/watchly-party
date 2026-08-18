@@ -26,7 +26,7 @@ import { Switch } from "@/components/ui/switch"
 import { createRoomAction } from "@/lib/home/create-room"
 import { isValidHttpUrl } from "@/lib/home/url"
 import { stashRoomPassword } from "@/lib/room/password-store"
-import type { RoomCardData } from "@/lib/home/types"
+import type { RoomCardData, RoomVisibility } from "@/lib/home/types"
 
 type CreateRoomDialogProps = {
   open: boolean
@@ -41,8 +41,34 @@ type CreateFormState = {
   isPrivate: boolean
   password: string
   videoUrl: string
-  visibleToFriends: boolean
+  visibility: RoomVisibility
 }
+
+const VISIBILITY_OPTIONS: {
+  value: RoomVisibility
+  label: string
+  description: string
+}[] = [
+  {
+    value: "private",
+    label: "Private",
+    description: "Hidden from feeds. Join with the room UID.",
+  },
+  {
+    value: "friends",
+    label: "Friends",
+    description: "Shows on friends' home feeds.",
+  },
+  {
+    value: "public",
+    label: "Public",
+    description: "Open join. Appears in Discover for anyone signed in.",
+  },
+]
+
+const resolveDefaultVisibility = (
+  defaultVisibleToFriends: boolean
+): RoomVisibility => (defaultVisibleToFriends ? "friends" : "private")
 
 export const CreateRoomDialog = ({
   open,
@@ -60,32 +86,43 @@ export const CreateRoomDialog = ({
     isPrivate: defaultIsPrivate,
     password: "",
     videoUrl: "",
-    visibleToFriends: defaultVisibleToFriends,
+    visibility: resolveDefaultVisibility(defaultVisibleToFriends),
   })
 
   useEffect(() => {
     if (!open) return
     setErrorMessage(null)
     setIsSubmitting(false)
+    const visibility = resolveDefaultVisibility(defaultVisibleToFriends)
     setFormState({
       name: "",
-      isPrivate: defaultIsPrivate,
+      isPrivate: visibility === "public" ? false : defaultIsPrivate,
       password: "",
       videoUrl: "",
-      visibleToFriends: defaultVisibleToFriends,
+      visibility,
     })
   }, [open, defaultIsPrivate, defaultVisibleToFriends])
 
   const resetForm = () => {
     setErrorMessage(null)
     setIsSubmitting(false)
+    const visibility = resolveDefaultVisibility(defaultVisibleToFriends)
     setFormState({
       name: "",
-      isPrivate: defaultIsPrivate,
+      isPrivate: visibility === "public" ? false : defaultIsPrivate,
       password: "",
       videoUrl: "",
-      visibleToFriends: defaultVisibleToFriends,
+      visibility,
     })
+  }
+
+  const handleVisibilityChange = (visibility: RoomVisibility) => {
+    setFormState((prev) => ({
+      ...prev,
+      visibility,
+      isPrivate: visibility === "public" ? false : prev.isPrivate,
+      password: visibility === "public" ? "" : prev.password,
+    }))
   }
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -110,7 +147,10 @@ export const CreateRoomDialog = ({
       return
     }
 
-    if (formState.isPrivate && !formState.password.trim()) {
+    const isPublic = formState.visibility === "public"
+    const isPrivate = isPublic ? false : formState.isPrivate
+
+    if (isPrivate && !formState.password.trim()) {
       setErrorMessage("Private rooms need a password.")
       return
     }
@@ -120,9 +160,9 @@ export const CreateRoomDialog = ({
     const result = await createRoomAction({
       name: formState.name,
       videoUrl: formState.videoUrl.trim(),
-      isPrivate: formState.isPrivate,
-      password: formState.isPrivate ? formState.password.trim() : undefined,
-      visibleToFriends: formState.visibleToFriends,
+      isPrivate,
+      password: isPrivate ? formState.password.trim() : undefined,
+      visibility: formState.visibility,
     })
 
     if (!result.ok) {
@@ -131,7 +171,7 @@ export const CreateRoomDialog = ({
       return
     }
 
-    if (formState.isPrivate && formState.password.trim()) {
+    if (isPrivate && formState.password.trim()) {
       stashRoomPassword(result.room.uid, formState.password.trim())
     }
 
@@ -173,29 +213,77 @@ export const CreateRoomDialog = ({
               />
             </Field>
 
-            <Field orientation="horizontal" className="items-center justify-between">
-              <div>
-                <FieldLabel htmlFor="create-room-private">Private room</FieldLabel>
-                <FieldDescription className="text-[#f3eadc]/45">
-                  Requires a password to join
-                </FieldDescription>
+            <Field>
+              <FieldLabel id="create-room-visibility-label">
+                Visibility
+              </FieldLabel>
+              <FieldDescription className="text-[#f3eadc]/45">
+                Choose who can find this room
+              </FieldDescription>
+              <div
+                role="radiogroup"
+                aria-labelledby="create-room-visibility-label"
+                className="mt-2 grid grid-cols-3 gap-2"
+              >
+                {VISIBILITY_OPTIONS.map((option) => {
+                  const isSelected = formState.visibility === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      aria-label={option.label}
+                      tabIndex={isSelected ? 0 : -1}
+                      disabled={isSubmitting}
+                      onClick={() => handleVisibilityChange(option.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault()
+                          handleVisibilityChange(option.value)
+                        }
+                      }}
+                      className={
+                        isSelected
+                          ? "rounded-lg border border-amber-flame bg-amber-flame/15 px-2 py-2 text-left text-xs text-[#f3eadc]"
+                          : "rounded-lg border border-night-bordeaux/60 bg-white/5 px-2 py-2 text-left text-xs text-[#f3eadc]/70 hover:border-amber-flame/40"
+                      }
+                    >
+                      <span className="block font-medium">{option.label}</span>
+                      <span className="mt-1 block text-[11px] leading-snug text-[#f3eadc]/50">
+                        {option.description}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
-              <Switch
-                id="create-room-private"
-                checked={formState.isPrivate}
-                onCheckedChange={(checked) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    isPrivate: checked,
-                    password: checked ? prev.password : "",
-                  }))
-                }
-                disabled={isSubmitting}
-                aria-label="Private room"
-              />
             </Field>
 
-            {formState.isPrivate ? (
+            {formState.visibility !== "public" ? (
+              <Field orientation="horizontal" className="items-center justify-between">
+                <div>
+                  <FieldLabel htmlFor="create-room-private">Require password</FieldLabel>
+                  <FieldDescription className="text-[#f3eadc]/45">
+                    Friends or UID holders still need a password
+                  </FieldDescription>
+                </div>
+                <Switch
+                  id="create-room-private"
+                  checked={formState.isPrivate}
+                  onCheckedChange={(checked) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      isPrivate: checked,
+                      password: checked ? prev.password : "",
+                    }))
+                  }
+                  disabled={isSubmitting}
+                  aria-label="Require password"
+                />
+              </Field>
+            ) : null}
+
+            {formState.visibility !== "public" && formState.isPrivate ? (
               <Field>
                 <FieldLabel htmlFor="create-room-password">Password</FieldLabel>
                 <Input
@@ -231,29 +319,6 @@ export const CreateRoomDialog = ({
                 placeholder="https://…"
                 className="border-night-bordeaux/60 bg-white/5 text-[#f3eadc]"
                 disabled={isSubmitting}
-              />
-            </Field>
-
-            <Field orientation="horizontal" className="items-center justify-between">
-              <div>
-                <FieldLabel htmlFor="create-room-visible">
-                  Visible to friends
-                </FieldLabel>
-                <FieldDescription className="text-[#f3eadc]/45">
-                  Show this room on friends&apos; home feeds
-                </FieldDescription>
-              </div>
-              <Switch
-                id="create-room-visible"
-                checked={formState.visibleToFriends}
-                onCheckedChange={(checked) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    visibleToFriends: checked,
-                  }))
-                }
-                disabled={isSubmitting}
-                aria-label="Visible to friends"
               />
             </Field>
           </FieldGroup>

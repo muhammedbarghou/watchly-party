@@ -15,6 +15,8 @@ import type {
 } from "@/lib/room/types"
 import type { RoomSocket } from "@/lib/socket"
 
+type SocketSubscriber = (socket: RoomSocket) => void
+
 type AppSocketContextValue = {
   registerSocket: (socket: RoomSocket | null) => void
   emit: <K extends ClientEventName>(
@@ -22,6 +24,7 @@ type AppSocketContextValue = {
     payload: ClientToServerEvents[K]
   ) => boolean
   getSocket: () => RoomSocket | null
+  subscribe: (listener: SocketSubscriber) => () => void
 }
 
 const AppSocketContext = createContext<AppSocketContextValue | null>(null)
@@ -32,12 +35,27 @@ type AppSocketProviderProps = {
 
 export const AppSocketProvider = ({ children }: AppSocketProviderProps) => {
   const socketRef = useRef<RoomSocket | null>(null)
+  const listenersRef = useRef(new Set<SocketSubscriber>())
 
   const registerSocket = useCallback((socket: RoomSocket | null) => {
     socketRef.current = socket
+    if (!socket) return
+    for (const listener of listenersRef.current) {
+      listener(socket)
+    }
   }, [])
 
   const getSocket = useCallback(() => socketRef.current, [])
+
+  const subscribe = useCallback((listener: SocketSubscriber) => {
+    listenersRef.current.add(listener)
+    if (socketRef.current) {
+      listener(socketRef.current)
+    }
+    return () => {
+      listenersRef.current.delete(listener)
+    }
+  }, [])
 
   const emit = useCallback(
     <K extends ClientEventName>(
@@ -60,8 +78,9 @@ export const AppSocketProvider = ({ children }: AppSocketProviderProps) => {
       registerSocket,
       emit,
       getSocket,
+      subscribe,
     }),
-    [registerSocket, emit, getSocket]
+    [registerSocket, emit, getSocket, subscribe]
   )
 
   return (

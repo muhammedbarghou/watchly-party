@@ -3,7 +3,7 @@
 import bcrypt from "bcryptjs"
 
 import { createClient } from "@/lib/supabase/server"
-import type { RoomCardData } from "@/lib/home/types"
+import type { RoomCardData, RoomVisibility } from "@/lib/home/types"
 
 const UID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 const MAX_UID_ATTEMPTS = 8
@@ -14,7 +14,7 @@ export type CreateRoomInput = {
   videoUrl: string
   isPrivate: boolean
   password?: string
-  visibleToFriends: boolean
+  visibility: RoomVisibility
 }
 
 export type CreateRoomResult =
@@ -46,7 +46,21 @@ export const createRoomAction = async (
     return { ok: false, error: "Enter a valid http(s) URL." }
   }
 
-  if (input.isPrivate && !input.password?.trim()) {
+  const visibility: RoomVisibility =
+    input.visibility === "public" ||
+    input.visibility === "friends" ||
+    input.visibility === "private"
+      ? input.visibility
+      : "friends"
+
+  if (visibility === "public" && input.isPrivate) {
+    return {
+      ok: false,
+      error: "Public rooms cannot require a password or approval.",
+    }
+  }
+
+  if (visibility !== "public" && input.isPrivate && !input.password?.trim()) {
     return { ok: false, error: "Private rooms need a password." }
   }
 
@@ -72,9 +86,11 @@ export const createRoomAction = async (
     }
   }
 
-  const passwordHash = input.isPrivate
+  const isPrivate = visibility === "public" ? false : input.isPrivate
+  const passwordHash = isPrivate
     ? await bcrypt.hash(input.password!.trim(), BCRYPT_ROUNDS)
     : null
+  const visibleToFriends = visibility !== "private"
 
   const name = input.name.trim() || null
 
@@ -88,12 +104,13 @@ export const createRoomAction = async (
         created_by: user.id,
         video_url: videoUrl,
         password_hash: passwordHash,
-        is_private: input.isPrivate,
-        visible_to_friends: input.visibleToFriends,
+        is_private: isPrivate,
+        visible_to_friends: visibleToFriends,
+        visibility,
         status: "active",
       })
       .select(
-        "id, uid, name, created_by, video_url, is_private, visible_to_friends, status, created_at"
+        "id, uid, name, created_by, video_url, is_private, visible_to_friends, visibility, status, created_at"
       )
       .single()
 
@@ -118,9 +135,10 @@ export const createRoomAction = async (
         avatarUrl: profile.avatar_url,
       },
       participantCount: 1,
-      requiresApproval: Boolean(input.isPrivate),
+      requiresApproval: isPrivate,
       isPrivate: Boolean(data.is_private),
-      visibleToFriends: Boolean(data.visible_to_friends),
+      visibility,
+      visibleToFriends,
       createdAt: data.created_at ?? new Date().toISOString(),
       closedAt: null,
     }

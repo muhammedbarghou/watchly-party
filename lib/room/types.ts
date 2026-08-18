@@ -83,6 +83,7 @@ export type ClientToServerEvents = {
   approve_access: { roomUid: string; targetUserId: string }
   deny_access: { roomUid: string; targetUserId: string }
   invite_to_room: { roomUid: string; targetUserId: string }
+  get_public_room_counts: Record<string, never>
   rtc_offer: { targetUserId: string; payload: RTCSessionDescriptionInit }
   rtc_answer: { targetUserId: string; payload: RTCSessionDescriptionInit }
   rtc_ice_candidate: { targetUserId: string; payload: RTCIceCandidateInit }
@@ -123,6 +124,10 @@ export type ServerToClientEvents = {
     fromUsername?: string
     fromAvatarUrl?: string | null
   }
+  public_room_counts: {
+    rooms: { roomUid: string; participantCount: number }[]
+  }
+  public_room_count: { roomUid: string; participantCount: number }
   rtc_offer: { fromUserId: string; payload: RTCSessionDescriptionInit }
   rtc_answer: { fromUserId: string; payload: RTCSessionDescriptionInit }
   rtc_ice_candidate: { fromUserId: string; payload: RTCIceCandidateInit }

@@ -151,12 +151,34 @@ export const MyRoomsPageShell = ({ currentUser }: MyRoomsPageShellProps) => {
                         Closed
                       </Badge>
                     )}
-                    {room.isPrivate ? (
+                    {room.visibility === "public" ? (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-flame/40 text-amber-flame"
+                      >
+                        Public
+                      </Badge>
+                    ) : room.visibility === "friends" ? (
+                      <Badge
+                        variant="outline"
+                        className="border-night-bordeaux/50 text-[#f3eadc]/55"
+                      >
+                        Friends
+                      </Badge>
+                    ) : (
                       <Badge
                         variant="outline"
                         className="border-night-bordeaux/50 text-[#f3eadc]/55"
                       >
                         Private
+                      </Badge>
+                    )}
+                    {room.isPrivate ? (
+                      <Badge
+                        variant="outline"
+                        className="border-night-bordeaux/50 text-[#f3eadc]/55"
+                      >
+                        Password
                       </Badge>
                     ) : null}
                   </div>

@@ -1,5 +1,7 @@
 export type RoomStatus = "active" | "closed"
 
+export type RoomVisibility = "private" | "friends" | "public"
+
 export type RoomCardData = {
   id: string
   uid: string
@@ -15,6 +17,7 @@ export type RoomCardData = {
   participantCount: number
   requiresApproval: boolean
   isPrivate: boolean
+  visibility: RoomVisibility
   visibleToFriends: boolean
   createdAt: string
   closedAt: string | null

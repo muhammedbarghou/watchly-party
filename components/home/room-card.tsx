@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 
 type RoomCardProps = {
   room: RoomCardData
-  variant: "friends" | "recent"
+  variant: "friends" | "recent" | "public"
   accessRequested?: boolean
   onRequestAccess?: (room: RoomCardData) => void
   onSelectClosed?: (room: RoomCardData) => void
@@ -50,7 +50,7 @@ export const RoomCard = ({
       return
     }
 
-    if (variant === "friends" && room.requiresApproval) {
+    if (variant === "friends" && room.requiresApproval && room.visibility !== "public") {
       onRequestAccess?.(room)
       return
     }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { DoorOpenIcon, PlusIcon, UsersIcon } from "lucide-react"
+import { DoorOpenIcon, PlusIcon, RadioIcon, UsersIcon } from "lucide-react"
 
 import { useFriends } from "@/components/friends/friends-provider"
 import { CreateRoomDialog } from "@/components/home/create-room-dialog"
@@ -24,8 +24,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { fetchRoomHistory, type RoomHistoryEntry } from "@/lib/home/room-history"
-import { fetchMyRecentRooms } from "@/lib/home/rooms"
+import { fetchMyRecentRooms, fetchPublicLiveRooms } from "@/lib/home/rooms"
 import type { RoomCardData } from "@/lib/home/types"
+import { createClient } from "@/lib/supabase/client"
+import type { RoomSocket } from "@/lib/socket"
 
 type HomePageShellProps = {
   displayName: string
@@ -41,12 +43,17 @@ export const HomePageShell = ({
   currentUser,
 }: HomePageShellProps) => {
   const { notify } = useNotifications()
-  const { emit } = useAppSocket()
+  const { emit, subscribe } = useAppSocket()
   const { preferences } = usePreferences()
   const { friendsLiveRooms, isLoading: isFriendsLoading } = useFriends()
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
   const [recentRooms, setRecentRooms] = useState<RoomCardData[]>([])
+  const [publicRooms, setPublicRooms] = useState<RoomCardData[]>([])
+  const [liveCounts, setLiveCounts] = useState<Map<string, number>>(
+    () => new Map()
+  )
+  const [isDiscoverLoading, setIsDiscoverLoading] = useState(true)
   const [joinedHistory, setJoinedHistory] = useState<RoomHistoryEntry[]>([])
   const [requestedRoomIds, setRequestedRoomIds] = useState<Set<string>>(
     () => new Set()
@@ -91,8 +98,111 @@ export const HomePageShell = ({
     }
   }, [currentUser])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const loadDiscover = async () => {
+      const rooms = await fetchPublicLiveRooms()
+      if (!cancelled) {
+        setPublicRooms(rooms)
+        setIsDiscoverLoading(false)
+      }
+    }
+
+    void loadDiscover()
+
+    const supabase = createClient()
+    const channel = supabase
+      .channel("public-rooms-discover")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "rooms",
+        },
+        () => {
+          void loadDiscover()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      void supabase.removeChannel(channel)
+    }
+  }, [])
+
+  useEffect(() => {
+    let activeSocket: RoomSocket | null = null
+
+    const handleSnapshot = (payload: {
+      rooms: { roomUid: string; participantCount: number }[]
+    }) => {
+      const next = new Map<string, number>()
+      for (const room of payload.rooms) {
+        next.set(room.roomUid, room.participantCount)
+      }
+      setLiveCounts(next)
+    }
+
+    const handleCount = (payload: {
+      roomUid: string
+      participantCount: number
+    }) => {
+      setLiveCounts((prev) => {
+        const next = new Map(prev)
+        if (payload.participantCount <= 0) {
+          next.delete(payload.roomUid)
+        } else {
+          next.set(payload.roomUid, payload.participantCount)
+        }
+        return next
+      })
+    }
+
+    const requestCounts = (socket: RoomSocket) => {
+      socket.emit("get_public_room_counts", {})
+    }
+
+    const handleConnect = () => {
+      if (activeSocket) requestCounts(activeSocket)
+    }
+
+    const unsubscribe = subscribe((socket) => {
+      if (activeSocket === socket) {
+        if (socket.connected) requestCounts(socket)
+        return
+      }
+
+      if (activeSocket) {
+        activeSocket.off("public_room_counts", handleSnapshot)
+        activeSocket.off("public_room_count", handleCount)
+        activeSocket.off("connect", handleConnect)
+      }
+
+      activeSocket = socket
+      socket.on("public_room_counts", handleSnapshot)
+      socket.on("public_room_count", handleCount)
+      socket.on("connect", handleConnect)
+      if (socket.connected) requestCounts(socket)
+    })
+
+    return () => {
+      unsubscribe()
+      if (activeSocket) {
+        activeSocket.off("public_room_counts", handleSnapshot)
+        activeSocket.off("public_room_count", handleCount)
+        activeSocket.off("connect", handleConnect)
+      }
+    }
+  }, [subscribe])
+
   const handleCreated = (room: RoomCardData) => {
     setRecentRooms((prev) => [room, ...prev.filter((r) => r.id !== room.id)])
+    if (room.visibility === "public" && room.status === "active") {
+      setPublicRooms((prev) => [room, ...prev.filter((r) => r.id !== room.id)])
+    }
   }
 
   const handleRequestAccess = (room: RoomCardData) => {
@@ -114,6 +224,11 @@ export const HomePageShell = ({
     setRequestRoom(null)
   }
 
+  const discoverRooms = publicRooms.map((room) => ({
+    ...room,
+    participantCount: liveCounts.get(room.uid) ?? room.participantCount,
+  }))
+
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <div className="mb-8">
@@ -124,8 +239,8 @@ export const HomePageShell = ({
           Watch together
         </h1>
         <p className="mt-2 max-w-xl text-sm text-[#f3eadc]/60">
-          Welcome back, {displayName}. Create a room or jump into one your
-          friends already opened.
+          Welcome back, {displayName}. Create a room or jump into one that is
+          already open — including public rooms in Discover.
         </p>
       </div>
 
@@ -215,6 +330,58 @@ export const HomePageShell = ({
                 accessRequested={requestedRoomIds.has(room.id)}
                 onRequestAccess={handleRequestAccess}
               />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section aria-labelledby="discover-heading" className="mb-12">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <h2
+            id="discover-heading"
+            className="font-serif text-xl text-[#f3eadc]"
+          >
+            Discover
+          </h2>
+          {!isDiscoverLoading ? (
+            <Badge
+              variant="outline"
+              className="border-amber-flame/40 text-amber-flame"
+            >
+              <span
+                className="mr-1.5 inline-block size-1.5 rounded-full bg-brick-ember"
+                aria-hidden
+              />
+              {discoverRooms.length} public
+            </Badge>
+          ) : null}
+        </div>
+
+        {isDiscoverLoading ? (
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-4">
+            <RoomCardSkeleton />
+            <RoomCardSkeleton />
+            <RoomCardSkeleton />
+          </div>
+        ) : discoverRooms.length === 0 ? (
+          <div className="glass-panel rounded-2xl px-6 py-10 text-center">
+            <RadioIcon className="mx-auto mb-3 size-8 text-[#f3eadc]/40" />
+            <p className="text-sm text-[#f3eadc]/70">
+              No public rooms are open right now. Create one so anyone signed in
+              can join.
+            </p>
+            <Button
+              type="button"
+              className="mt-4 bg-amber-flame text-ink-black hover:bg-[#e5a500]"
+              onClick={() => setIsCreateOpen(true)}
+            >
+              Create a public room
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-4">
+            {discoverRooms.map((room) => (
+              <RoomCard key={room.id} room={room} variant="public" />
             ))}
           </div>
         )}
