@@ -3,6 +3,7 @@
 import type { ReactNode } from "react"
 import { usePathname } from "next/navigation"
 
+import { PageTransitionOverlay } from "@/components/brand/page-transition-overlay"
 import { FriendsProvider } from "@/components/friends/friends-provider"
 import { AppNav } from "@/components/home/app-nav"
 import { AppSocketProvider } from "@/components/notifications/app-socket-provider"
@@ -39,7 +40,12 @@ export const ProtectedShell = ({
               {hideAppNav ? null : (
                 <AppNav displayName={displayName} avatarUrl={avatarUrl} />
               )}
-              {children}
+              <PageTransitionOverlay
+                enabled={!hideAppNav}
+                fillBelowNav={!hideAppNav}
+              >
+                {children}
+              </PageTransitionOverlay>
               <NotificationToastRegion />
             </div>
           </FriendsProvider>

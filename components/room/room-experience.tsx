@@ -3,8 +3,8 @@
 import { useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Loader2Icon } from "lucide-react"
 
+import { CinemaPageLoader } from "@/components/brand/cinema-page-loader"
 import { useNotifications } from "@/components/notifications/notification-provider"
 import { RoomChat } from "@/components/room/room-chat"
 import { RoomParticipantList } from "@/components/room/room-participant-list"
@@ -218,13 +218,11 @@ export const RoomExperience = ({
 
   if (status === "connecting" || (status === "joined" && !roomState)) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-3 px-6">
-        <Loader2Icon
-          className="size-8 animate-spin text-amber-flame"
-          aria-hidden
-        />
-        <p className="text-sm text-[#f3eadc]/70">Joining room…</p>
-      </main>
+      <CinemaPageLoader
+        caption="Joining the screening…"
+        className="min-h-screen"
+        eyebrow="Lights down"
+      />
     )
   }
 
